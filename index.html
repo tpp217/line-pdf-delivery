@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LINE PDF DELIVERY — 設計書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700&family=Share+Tech+Mono&family=Noto+Sans+JP:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111111;
+    --border: rgba(255,255,255,0.08);
+    --cyan: #00f0ff;
+    --green: #00ff41;
+    --red: #ff0033;
+    --yellow: #ffd700;
+    --white: #ffffff;
+    --gray: #888888;
+    --text: #d0d0d0;
+    --mono: 'Share Tech Mono', monospace;
+    --heading: 'Orbitron', monospace;
+    --body: 'Noto Sans JP', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  /* Layout */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,10,10,0.95);
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(8px);
+    padding: 0 24px;
+  }
+  .nav-inner {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; align-items: center; gap: 32px;
+    height: 52px;
+  }
+  .nav-logo {
+    font-family: var(--heading);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .nav-links {
+    display: flex; gap: 24px; list-style: none;
+    overflow-x: auto;
+  }
+  .nav-links a {
+    color: var(--gray);
+    text-decoration: none;
+    font-size: 12px;
+    font-family: var(--mono);
+    letter-spacing: 0.05em;
+    transition: color 0.2s;
+    white-space: nowrap;
+  }
+  .nav-links a:hover { color: var(--white); }
+
+  /* Header */
+  header {
+    padding: 72px 0 56px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--cyan);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-family: var(--heading);
+    font-size: clamp(22px, 4vw, 36px);
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+  .header-sub {
+    color: var(--gray);
+    font-size: 13px;
+    max-width: 600px;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+    overflow-x: auto;
+  }
+  .tab-btn {
+    background: none; border: none;
+    padding: 14px 24px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--gray);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.06em;
+  }
+  .tab-btn.active {
+    color: var(--cyan);
+    border-bottom-color: var(--cyan);
+  }
+  .tab-btn:hover:not(.active) { color: var(--white); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* Section */
+  .section { padding: 48px 0; }
+  .section + .section { border-top: 1px solid var(--border); }
+  .section-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--cyan);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  h2 {
+    font-family: var(--heading);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--white);
+    margin-bottom: 24px;
+    letter-spacing: 0.04em;
+  }
+  h3 {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--cyan);
+    margin: 32px 0 12px;
+    letter-spacing: 0.06em;
+  }
+
+  /* Code block */
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+    color: #c9d1d9;
+    margin: 16px 0;
+  }
+  .kw { color: #ff7b72; }
+  .ty { color: #79c0ff; }
+  .st { color: #a5d6ff; }
+  .cm { color: #484f58; }
+  .va { color: #e3b341; }
+  .en { color: #d2a8ff; }
+
+  /* Table */
+  .tbl-wrap { overflow-x: auto; margin: 16px 0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--gray);
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-weight: normal;
+    white-space: nowrap;
+  }
+  td {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    vertical-align: top;
+  }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .td-mono { font-family: var(--mono); font-size: 12px; }
+  .td-type { font-family: var(--mono); font-size: 12px; color: var(--cyan); }
+  .td-req { color: var(--yellow); font-size: 11px; }
+  .td-constraint { font-size: 12px; color: var(--gray); }
+
+  /* API list */
+  .api-list { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+  .api-row {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 13px;
+  }
+  .api-method {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 2px;
+    min-width: 52px;
+    text-align: center;
+    letter-spacing: 0.04em;
+  }
+  .m-get    { background: rgba(0,240,255,0.12); color: var(--cyan); }
+  .m-post   { background: rgba(0,255,65,0.12);  color: var(--green); }
+  .m-patch  { background: rgba(255,215,0,0.12); color: var(--yellow); }
+  .m-delete { background: rgba(255,0,51,0.12);  color: var(--red); }
+  .api-path { font-family: var(--mono); font-size: 12px; color: var(--white); flex: 1; }
+  .api-desc { color: var(--gray); font-size: 12px; }
+
+  /* Badge */
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 2px;
+    border: 1px solid;
+    letter-spacing: 0.05em;
+  }
+  .badge-cyan   { color: var(--cyan);   border-color: rgba(0,240,255,0.4); }
+  .badge-green  { color: var(--green);  border-color: rgba(0,255,65,0.4); }
+  .badge-red    { color: var(--red);    border-color: rgba(255,0,51,0.4); }
+  .badge-yellow { color: var(--yellow); border-color: rgba(255,215,0,0.4); }
+  .badge-gray   { color: var(--gray);   border-color: rgba(136,136,136,0.4); }
+
+  /* Stack grid */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .stack-card {
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+  }
+  .stack-cat {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--gray);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .stack-name {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--cyan);
+    margin-bottom: 4px;
+  }
+  .stack-reason { font-size: 12px; color: var(--gray); }
+
+  /* Relation */
+  .rel-list { display: flex; flex-direction: column; gap: 8px; margin: 16px 0; }
+  .rel-row {
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .rel-from { color: var(--cyan); }
+  .rel-to   { color: var(--white); }
+  .rel-arrow { color: var(--gray); }
+  .rel-card { color: var(--gray); font-size: 11px; }
+
+  /* Env block */
+  .env-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 2;
+  }
+  .env-key   { color: var(--cyan); }
+  .env-val   { color: var(--gray); }
+  .env-group { color: var(--yellow); margin-top: 12px; font-size: 11px; }
+
+  /* Worker job */
+  .job-list { display: flex; flex-direction: column; gap: 6px; margin: 16px 0; }
+  .job-row {
+    display: flex; align-items: center; gap: 12px;
+    font-family: var(--mono); font-size: 12px;
+    padding: 8px 14px;
+    border-left: 2px solid var(--cyan);
+    background: var(--surface);
+  }
+  .job-name { color: var(--cyan); }
+  .job-desc { color: var(--gray); }
+
+  footer {
+    padding: 32px 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray);
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">LINE PDF DELIVERY</div>
+    <ul class="nav-links">
+      <li><a href="#" onclick="switchTab('stack')">TECH STACK</a></li>
+      <li><a href="#" onclick="switchTab('schema')">DB SCHEMA</a></li>
+      <li><a href="#" onclick="switchTab('api')">API</a></li>
+      <li><a href="#" onclick="switchTab('env')">ENV</a></li>
+    </ul>
+  </div>
+</nav>
+
+<header>
+  <div class="container">
+    <div class="header-label">SYSTEM DESIGN DOCUMENT v1.0</div>
+    <h1>LINE PDF DELIVERY SYSTEM</h1>
+    <p class="header-sub">PDFフォルダ一括取り込み → テキスト抽出 → LINE個別配信 システムの技術仕様書</p>
+  </div>
+</header>
+
+<main>
+<div class="container">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('stack')">01 / TECH STACK</button>
+    <button class="tab-btn" onclick="switchTab('schema')">02 / DB SCHEMA</button>
+    <button class="tab-btn" onclick="switchTab('api')">03 / API LIST</button>
+    <button class="tab-btn" onclick="switchTab('env')">04 / ENV / WORKER</button>
+  </div>
+
+  <!-- ── TECH STACK ───────────────────────────────── -->
+  <div id="tab-stack" class="tab-panel active">
+
+    <div class="section">
+      <div class="section-label">Frontend</div>
+      <h2>フロントエンド</h2>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-cat">Framework</div>
+          <div class="stack-name">Next.js 14</div>
+          <div class="stack-reason">App Router / フロント+API同一リポジトリ</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Language</div>
+          <div class="stack-name">TypeScript 5</div>
+          <div class="stack-reason">型安全性 / Prismaとの相性</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Styling</div>
+          <div class="stack-name">Tailwind CSS 3</div>
+          <div class="stack-reason">ユーティリティファースト</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Font</div>
+          <div class="stack-name">Orbitron / Share Tech Mono</div>
+          <div class="stack-reason">デザイン仕様書準拠の英数字フォント</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Font JP</div>
+          <div class="stack-name">Noto Sans JP</div>
+          <div class="stack-reason">日本語可読性</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">PDF Viewer</div>
+          <div class="stack-name">pdfjs-dist</div>
+          <div class="stack-reason">ブラウザ側プレビュー・テキスト抽出</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Icons</div>
+          <div class="stack-name">Lucide React</div>
+          <div class="stack-reason">過剰装飾なしのシンプルアイコン</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Table</div>
+          <div class="stack-name">TanStack Table</div>
+          <div class="stack-reason">一覧UI / ソート・フィルタ対応</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Backend</div>
+      <h2>バックエンド</h2>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-cat">API Server</div>
+          <div class="stack-name">Next.js Route Handlers</div>
+          <div class="stack-reason">別サーバー不要 / Vercel親和性</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">ORM</div>
+          <div class="stack-name">Prisma 5</div>
+          <div class="stack-reason">マイグレーション管理 / 型安全クエリ</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Validation</div>
+          <div class="stack-name">Zod 3</div>
+          <div class="stack-reason">APIリクエスト型安全バリデーション</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">PDF Parse</div>
+          <div class="stack-name">pdf-parse</div>
+          <div class="stack-reason">サーバー側テキスト抽出</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">LINE SDK</div>
+          <div class="stack-name">@line/bot-sdk 9</div>
+          <div class="stack-reason">公式Node.js SDK / push・multicast</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Job Queue</div>
+          <div class="stack-name">pg-boss</div>
+          <div class="stack-reason">PostgreSQLベース / Redis不要</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Data / Infra</div>
+      <h2>データ / インフラ</h2>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <div class="stack-cat">Database</div>
+          <div class="stack-name">Supabase PostgreSQL</div>
+          <div class="stack-reason">DB + Storage を同一管理 / 無料枠が広い</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">File Storage</div>
+          <div class="stack-name">Supabase Storage</div>
+          <div class="stack-reason">PDF保存 / 署名付きURL発行</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Hosting</div>
+          <div class="stack-name">Railway</div>
+          <div class="stack-reason">Web + Worker 同一リポジトリデプロイ</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">Git</div>
+          <div class="stack-name">GitHub</div>
+          <div class="stack-reason">ブランチ管理 / CI/CD</div>
+        </div>
+        <div class="stack-card">
+          <div class="stack-cat">LINE</div>
+          <div class="stack-name">LINE Messaging API</div>
+          <div class="stack-reason">push（1:1）/ multicast（1:多）配信</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── DB SCHEMA ───────────────────────────────── -->
+  <div id="tab-schema" class="tab-panel">
+
+    <!-- recipients -->
+    <div class="section">
+      <div class="section-label">Table 01</div>
+      <h2>recipients — 送信先管理</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th>
+          </tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint">default uuid()</td></tr>
+            <tr><td class="td-mono">display_name</td><td class="td-type">varchar(120)</td><td class="td-req">○</td><td class="td-constraint">管理用ラベル</td></tr>
+            <tr><td class="td-mono">line_user_id</td><td class="td-type">varchar(64)</td><td class="td-req">UNIQUE</td><td class="td-constraint">Uから始まる33桁</td></tr>
+            <tr><td class="td-mono">memo</td><td class="td-type">text</td><td></td><td class="td-constraint">備考</td></tr>
+            <tr><td class="td-mono">is_active</td><td class="td-type">boolean</td><td class="td-req">○</td><td class="td-constraint">default true / 論理削除フラグ</td></tr>
+            <tr><td class="td-mono">is_default</td><td class="td-type">boolean</td><td class="td-req">○</td><td class="td-constraint">default false / 次回自動チェック</td></tr>
+            <tr><td class="td-mono">created_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint">default now()</td></tr>
+            <tr><td class="td-mono">updated_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint">auto update</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- pdf_upload_batches -->
+    <div class="section">
+      <div class="section-label">Table 02</div>
+      <h2>pdf_upload_batches — アップロード単位</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint">default uuid()</td></tr>
+            <tr><td class="td-mono">batch_name</td><td class="td-type">varchar(200)</td><td class="td-req">○</td><td class="td-constraint">例: 2026-04-11_請求書一括</td></tr>
+            <tr><td class="td-mono">source_folder_name</td><td class="td-type">varchar(255)</td><td></td><td class="td-constraint">元フォルダ名</td></tr>
+            <tr><td class="td-mono">total_files</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 0</td></tr>
+            <tr><td class="td-mono">total_pdf_files</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 0</td></tr>
+            <tr><td class="td-mono">created_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint">default now()</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- pdf_documents -->
+    <div class="section">
+      <div class="section-label">Table 03</div>
+      <h2>pdf_documents — PDFと抽出結果</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint"></td></tr>
+            <tr><td class="td-mono">upload_batch_id</td><td class="td-type">uuid</td><td class="td-req">FK</td><td class="td-constraint">pdf_upload_batches.id</td></tr>
+            <tr><td class="td-mono">original_file_name</td><td class="td-type">varchar(255)</td><td class="td-req">○</td><td class="td-constraint">元ファイル名</td></tr>
+            <tr><td class="td-mono">storage_bucket</td><td class="td-type">varchar(80)</td><td class="td-req">○</td><td class="td-constraint">default 'pdfs'</td></tr>
+            <tr><td class="td-mono">storage_path</td><td class="td-type">varchar(500)</td><td class="td-req">○</td><td class="td-constraint">pdfs/{uuid}/{filename}</td></tr>
+            <tr><td class="td-mono">file_size_bytes</td><td class="td-type">bigint</td><td class="td-req">○</td><td class="td-constraint">ファイルサイズ</td></tr>
+            <tr><td class="td-mono">page_count</td><td class="td-type">int</td><td></td><td class="td-constraint">ページ数</td></tr>
+            <tr><td class="td-mono">extracted_text</td><td class="td-type">text</td><td></td><td class="td-constraint">抽出全文</td></tr>
+            <tr><td class="td-mono">extract_status</td><td class="td-type">ExtractStatus</td><td class="td-req">○</td><td class="td-constraint">PENDING / PROCESSING / DONE / FAILED</td></tr>
+            <tr><td class="td-mono">company_name</td><td class="td-type">varchar(255)</td><td></td><td class="td-constraint">自動抽出</td></tr>
+            <tr><td class="td-mono">person_name</td><td class="td-type">varchar(255)</td><td></td><td class="td-constraint">自動抽出</td></tr>
+            <tr><td class="td-mono">company_name_manual</td><td class="td-type">varchar(255)</td><td></td><td class="td-constraint">手修正値</td></tr>
+            <tr><td class="td-mono">person_name_manual</td><td class="td-type">varchar(255)</td><td></td><td class="td-constraint">手修正値</td></tr>
+            <tr><td class="td-mono">extraction_confidence</td><td class="td-type">decimal(5,2)</td><td></td><td class="td-constraint">0–100</td></tr>
+            <tr><td class="td-mono">uploaded_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint">default now()</td></tr>
+            <tr><td class="td-mono">deleted_at</td><td class="td-type">timestamptz</td><td></td><td class="td-constraint">論理削除 / Storage も削除</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- routing_rules -->
+    <div class="section">
+      <div class="section-label">Table 04</div>
+      <h2>routing_rules — 自動送信先ルール</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint"></td></tr>
+            <tr><td class="td-mono">match_type</td><td class="td-type">MatchType</td><td class="td-req">○</td><td class="td-constraint">EXACT / CONTAINS / REGEX</td></tr>
+            <tr><td class="td-mono">company_key</td><td class="td-type">varchar(255)</td><td class="td-req">○</td><td class="td-constraint">マッチキーワード</td></tr>
+            <tr><td class="td-mono">recipient_id</td><td class="td-type">uuid</td><td class="td-req">FK</td><td class="td-constraint">recipients.id</td></tr>
+            <tr><td class="td-mono">priority</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">高い値が優先</td></tr>
+            <tr><td class="td-mono">is_active</td><td class="td-type">boolean</td><td class="td-req">○</td><td class="td-constraint">default true</td></tr>
+            <tr><td class="td-mono">last_hit_at</td><td class="td-type">timestamptz</td><td></td><td class="td-constraint">最終適用日時</td></tr>
+            <tr><td class="td-mono">created_at / updated_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- send_batches -->
+    <div class="section">
+      <div class="section-label">Table 05</div>
+      <h2>send_batches — 一括送信バッチ</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint"></td></tr>
+            <tr><td class="td-mono">title</td><td class="td-type">varchar(200)</td><td class="td-req">○</td><td class="td-constraint">管理タイトル</td></tr>
+            <tr><td class="td-mono">status</td><td class="td-type">BatchStatus</td><td class="td-req">○</td><td class="td-constraint">DRAFT→QUEUED→PROCESSING→COMPLETED</td></tr>
+            <tr><td class="td-mono">total_jobs</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 0</td></tr>
+            <tr><td class="td-mono">success_jobs</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 0</td></tr>
+            <tr><td class="td-mono">failed_jobs</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 0</td></tr>
+            <tr><td class="td-mono">created_at / started_at / completed_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint"></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- send_jobs -->
+    <div class="section">
+      <div class="section-label">Table 06</div>
+      <h2>send_jobs — 個別送信ジョブ（1PDF × 1送信先）</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint"></td></tr>
+            <tr><td class="td-mono">send_batch_id</td><td class="td-type">uuid</td><td class="td-req">FK</td><td class="td-constraint">send_batches.id</td></tr>
+            <tr><td class="td-mono">pdf_document_id</td><td class="td-type">uuid</td><td class="td-req">FK</td><td class="td-constraint">pdf_documents.id</td></tr>
+            <tr><td class="td-mono">recipient_id</td><td class="td-type">uuid</td><td class="td-req">FK</td><td class="td-constraint">recipients.id</td></tr>
+            <tr><td class="td-mono">delivery_mode</td><td class="td-type">DeliveryMode</td><td class="td-req">○</td><td class="td-constraint">PUSH / MULTICAST</td></tr>
+            <tr><td class="td-mono">status</td><td class="td-type">JobStatus</td><td class="td-req">○</td><td class="td-constraint">PENDING / PROCESSING / SENT / FAILED / CANCELLED</td></tr>
+            <tr><td class="td-mono">message_title</td><td class="td-type">varchar(255)</td><td></td><td class="td-constraint">LINEに表示する件名</td></tr>
+            <tr><td class="td-mono">signed_url</td><td class="td-type">text</td><td></td><td class="td-constraint">発行した署名付きURL</td></tr>
+            <tr><td class="td-mono">signed_url_expires_at</td><td class="td-type">timestamptz</td><td></td><td class="td-constraint">URL有効期限</td></tr>
+            <tr><td class="td-mono">line_request_id</td><td class="td-type">varchar(120)</td><td></td><td class="td-constraint">X-Line-Request-Id</td></tr>
+            <tr><td class="td-mono">error_message</td><td class="td-type">text</td><td></td><td class="td-constraint">失敗理由</td></tr>
+            <tr><td class="td-mono">retry_count</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 0 / 上限3回</td></tr>
+            <tr><td class="td-mono">sent_at</td><td class="td-type">timestamptz</td><td></td><td class="td-constraint">送信完了日時</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="font-size:12px; color:var(--gray); margin-top:8px;">
+        UNIQUE: (send_batch_id, pdf_document_id, recipient_id)
+      </p>
+    </div>
+
+    <!-- delivery_events -->
+    <div class="section">
+      <div class="section-label">Table 07</div>
+      <h2>delivery_events — 配信イベントログ</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">uuid</td><td class="td-req">PK</td><td class="td-constraint"></td></tr>
+            <tr><td class="td-mono">send_job_id</td><td class="td-type">uuid</td><td class="td-req">FK</td><td class="td-constraint">send_jobs.id</td></tr>
+            <tr><td class="td-mono">event_type</td><td class="td-type">EventType</td><td class="td-req">○</td><td class="td-constraint">CREATED / QUEUED / SENT / FAILED / RETRIED / URL_OPENED / CANCELLED</td></tr>
+            <tr><td class="td-mono">payload</td><td class="td-type">jsonb</td><td></td><td class="td-constraint">詳細情報</td></tr>
+            <tr><td class="td-mono">created_at</td><td class="td-type">timestamptz</td><td class="td-req">○</td><td class="td-constraint">default now()</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- app_settings -->
+    <div class="section">
+      <div class="section-label">Table 08</div>
+      <h2>app_settings — システム設定（シングルトン）</h2>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>カラム</th><th>型</th><th>必須</th><th>制約・説明</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">id</td><td class="td-type">varchar(32)</td><td class="td-req">PK</td><td class="td-constraint">固定値 "singleton"</td></tr>
+            <tr><td class="td-mono">line_channel_access_token_enc</td><td class="td-type">text</td><td></td><td class="td-constraint">AES-256-GCM暗号化</td></tr>
+            <tr><td class="td-mono">line_channel_secret_enc</td><td class="td-type">text</td><td></td><td class="td-constraint">AES-256-GCM暗号化</td></tr>
+            <tr><td class="td-mono">default_signed_url_expiry_hours</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 72</td></tr>
+            <tr><td class="td-mono">max_retry_count</td><td class="td-type">int</td><td class="td-req">○</td><td class="td-constraint">default 3</td></tr>
+            <tr><td class="td-mono">viewer_base_url</td><td class="td-type">varchar(500)</td><td></td><td class="td-constraint">PDFビューアのベースURL</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Relations -->
+    <div class="section">
+      <div class="section-label">Relations</div>
+      <h2>テーブル間リレーション</h2>
+      <div class="rel-list">
+        <div class="rel-row">
+          <span class="rel-from">pdf_upload_batches</span>
+          <span class="rel-arrow">1 ─── n</span>
+          <span class="rel-to">pdf_documents</span>
+          <span class="rel-card">(upload_batch_id)</span>
+        </div>
+        <div class="rel-row">
+          <span class="rel-from">recipients</span>
+          <span class="rel-arrow">1 ─── n</span>
+          <span class="rel-to">routing_rules</span>
+          <span class="rel-card">(recipient_id)</span>
+        </div>
+        <div class="rel-row">
+          <span class="rel-from">send_batches</span>
+          <span class="rel-arrow">1 ─── n</span>
+          <span class="rel-to">send_jobs</span>
+          <span class="rel-card">(send_batch_id)</span>
+        </div>
+        <div class="rel-row">
+          <span class="rel-from">pdf_documents</span>
+          <span class="rel-arrow">1 ─── n</span>
+          <span class="rel-to">send_jobs</span>
+          <span class="rel-card">(pdf_document_id)</span>
+        </div>
+        <div class="rel-row">
+          <span class="rel-from">recipients</span>
+          <span class="rel-arrow">1 ─── n</span>
+          <span class="rel-to">send_jobs</span>
+          <span class="rel-card">(recipient_id)</span>
+        </div>
+        <div class="rel-row">
+          <span class="rel-from">send_jobs</span>
+          <span class="rel-arrow">1 ─── n</span>
+          <span class="rel-to">delivery_events</span>
+          <span class="rel-card">(send_job_id)</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── API LIST ──────────────────────────────────── -->
+  <div id="tab-api" class="tab-panel">
+
+    <div class="section">
+      <div class="section-label">Base</div>
+      <h2>ベースURL</h2>
+      <pre>/api/v1</pre>
+    </div>
+
+    <div class="section">
+      <h3>DASHBOARD</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/dashboard/summary</span><span class="api-desc">KPIサマリー取得</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/dashboard/activity</span><span class="api-desc">時系列グラフ用データ</span></div>
+      </div>
+
+      <h3>UPLOADS</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/uploads/folder</span><span class="api-desc">フォルダ内PDF一括アップロード</span></div>
+      </div>
+
+      <h3>PDFS</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/pdfs</span><span class="api-desc">PDF一覧（ページ・フィルタ対応）</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/pdfs/:id</span><span class="api-desc">PDF詳細取得</span></div>
+        <div class="api-row"><span class="api-method m-patch">PATCH</span><span class="api-path">/pdfs/:id</span><span class="api-desc">抽出結果の手修正</span></div>
+        <div class="api-row"><span class="api-method m-delete">DELETE</span><span class="api-path">/pdfs/:id</span><span class="api-desc">PDF削除（Storage + DB）</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/pdfs/:id/extract</span><span class="api-desc">単体テキスト抽出実行</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/pdfs/extract-bulk</span><span class="api-desc">複数PDF一括抽出</span></div>
+      </div>
+
+      <h3>RECIPIENTS</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/recipients</span><span class="api-desc">送信先一覧</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/recipients</span><span class="api-desc">新規登録</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/recipients/:id</span><span class="api-desc">詳細取得</span></div>
+        <div class="api-row"><span class="api-method m-patch">PATCH</span><span class="api-path">/recipients/:id</span><span class="api-desc">更新</span></div>
+        <div class="api-row"><span class="api-method m-delete">DELETE</span><span class="api-path">/recipients/:id</span><span class="api-desc">論理削除</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/recipients/import</span><span class="api-desc">CSVインポート</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/recipients/export</span><span class="api-desc">CSVエクスポート</span></div>
+      </div>
+
+      <h3>ROUTING RULES</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/routing-rules</span><span class="api-desc">ルール一覧</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/routing-rules</span><span class="api-desc">新規作成</span></div>
+        <div class="api-row"><span class="api-method m-patch">PATCH</span><span class="api-path">/routing-rules/:id</span><span class="api-desc">ルール更新</span></div>
+        <div class="api-row"><span class="api-method m-delete">DELETE</span><span class="api-path">/routing-rules/:id</span><span class="api-desc">ルール削除</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/routing-rules/suggest</span><span class="api-desc">会社名で送信先候補を返す</span></div>
+      </div>
+
+      <h3>SEND BATCHES</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/send-batches</span><span class="api-desc">バッチ一覧</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/send-batches</span><span class="api-desc">バッチ作成</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/send-batches/:id</span><span class="api-desc">バッチ詳細（ジョブ含む）</span></div>
+        <div class="api-row"><span class="api-method m-patch">PATCH</span><span class="api-path">/send-batches/:id</span><span class="api-desc">バッチ更新（DRAFT のみ）</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/send-batches/:id/preview</span><span class="api-desc">送信前確認プレビュー</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/send-batches/:id/submit</span><span class="api-desc">送信キューへ投入（実行）</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/send-batches/:id/cancel</span><span class="api-desc">バッチキャンセル</span></div>
+      </div>
+
+      <h3>SEND JOBS</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/send-jobs</span><span class="api-desc">ジョブ一覧（フィルタ対応）</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/send-jobs/:id</span><span class="api-desc">ジョブ詳細</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/send-jobs/:id/retry</span><span class="api-desc">単件再送</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/send-jobs/retry-bulk</span><span class="api-desc">失敗ジョブ一括再送</span></div>
+      </div>
+
+      <h3>HISTORY</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/history</span><span class="api-desc">送信履歴一覧（フィルタ・ページ対応）</span></div>
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/history/export</span><span class="api-desc">履歴 CSV出力</span></div>
+      </div>
+
+      <h3>SETTINGS</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/settings</span><span class="api-desc">設定取得（トークンはマスク）</span></div>
+        <div class="api-row"><span class="api-method m-patch">PATCH</span><span class="api-path">/settings</span><span class="api-desc">設定更新</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/settings/test-line</span><span class="api-desc">LINE疎通確認</span></div>
+        <div class="api-row"><span class="api-method m-post">POST</span><span class="api-path">/settings/test-storage</span><span class="api-desc">Storage接続確認</span></div>
+      </div>
+
+      <h3>PDF VIEWER（受信者向け）</h3>
+      <div class="api-list">
+        <div class="api-row"><span class="api-method m-get">GET</span><span class="api-path">/v/:token</span><span class="api-desc">署名付きトークン検証 → PDFリダイレクト / URL_OPENED 記録</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── ENV / WORKER ──────────────────────────────── -->
+  <div id="tab-env" class="tab-panel">
+
+    <div class="section">
+      <div class="section-label">Environment Variables</div>
+      <h2>環境変数</h2>
+      <div class="env-block">
+        <div class="env-group"># App</div>
+        <div><span class="env-key">NODE_ENV</span>=<span class="env-val">production</span></div>
+        <div class="env-group"># Database (Supabase Postgres)</div>
+        <div><span class="env-key">DATABASE_URL</span>=<span class="env-val">postgresql://...</span></div>
+        <div><span class="env-key">DIRECT_URL</span>=<span class="env-val">postgresql://... (Prisma migrate用)</span></div>
+        <div class="env-group"># Supabase</div>
+        <div><span class="env-key">SUPABASE_URL</span>=<span class="env-val">https://xxxx.supabase.co</span></div>
+        <div><span class="env-key">SUPABASE_ANON_KEY</span>=<span class="env-val">...</span></div>
+        <div><span class="env-key">SUPABASE_SERVICE_ROLE_KEY</span>=<span class="env-val">...</span></div>
+        <div><span class="env-key">SUPABASE_STORAGE_BUCKET</span>=<span class="env-val">pdfs</span></div>
+        <div class="env-group"># LINE Messaging API</div>
+        <div><span class="env-key">LINE_CHANNEL_ACCESS_TOKEN</span>=<span class="env-val">...</span></div>
+        <div><span class="env-key">LINE_CHANNEL_SECRET</span>=<span class="env-val">...</span></div>
+        <div class="env-group"># App URLs</div>
+        <div><span class="env-key">APP_BASE_URL</span>=<span class="env-val">https://your-app.railway.app</span></div>
+        <div><span class="env-key">PDF_VIEWER_BASE_URL</span>=<span class="env-val">https://your-app.railway.app/v</span></div>
+        <div><span class="env-key">SIGNED_URL_EXPIRY_HOURS</span>=<span class="env-val">72</span></div>
+        <div class="env-group"># Security</div>
+        <div><span class="env-key">ENCRYPTION_KEY</span>=<span class="env-val">32byte hex (AES-256-GCM)</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">Worker Jobs</div>
+      <h2>pg-boss ジョブ定義</h2>
+      <div class="job-list">
+        <div class="job-row">
+          <span class="job-name">pdf.extract</span>
+          <span class="job-desc">PDFテキスト抽出・会社名/人名解析</span>
+        </div>
+        <div class="job-row">
+          <span class="job-name">send.prepare</span>
+          <span class="job-desc">署名付きURL発行・ジョブ状態をPROCESSINGへ</span>
+        </div>
+        <div class="job-row">
+          <span class="job-name">send.line.push</span>
+          <span class="job-desc">LINE push API 呼び出し（1:1）</span>
+        </div>
+        <div class="job-row">
+          <span class="job-name">send.line.multicast</span>
+          <span class="job-desc">LINE multicast API 呼び出し（1:多）</span>
+        </div>
+        <div class="job-row">
+          <span class="job-name">send.retry</span>
+          <span class="job-desc">失敗ジョブの再送（最大3回）</span>
+        </div>
+        <div class="job-row">
+          <span class="job-name">pdf.cleanup.expired</span>
+          <span class="job-desc">有効期限切れPDFをStorage + DBから削除（定期実行）</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">LINE Delivery Flow</div>
+      <h2>PDF配信の仕組み</h2>
+      <p style="color:var(--gray); font-size:13px; margin-bottom:16px;">
+        LINE Messaging API にはPDF送信タイプがないため、以下の方式で「添付体験に近い」配信を実現する。
+      </p>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Step</th><th>処理</th><th>担当</th></tr></thead>
+          <tbody>
+            <tr><td class="td-mono">1</td><td>PDFをSupabase Storageへ保存</td><td><span class="badge badge-cyan">Worker</span></td></tr>
+            <tr><td class="td-mono">2</td><td>署名付きURL（有効期限付き）を発行</td><td><span class="badge badge-cyan">Worker</span></td></tr>
+            <tr><td class="td-mono">3</td><td>LINEへ Flex Message で送信<br><span style="color:var(--gray);font-size:11px;">ファイル名 / 会社名 / 人名 / 有効期限 / 「PDFを開く」ボタン</span></td><td><span class="badge badge-cyan">Worker</span></td></tr>
+            <tr><td class="td-mono">4</td><td>受信者がボタンをタップ → /v/:token へアクセス</td><td><span class="badge badge-gray">受信者</span></td></tr>
+            <tr><td class="td-mono">5</td><td>トークン検証 → delivery_events に URL_OPENED 記録</td><td><span class="badge badge-cyan">API</span></td></tr>
+            <tr><td class="td-mono">6</td><td>署名付きURLへリダイレクト → PDFダウンロード</td><td><span class="badge badge-gray">ブラウザ</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+</main>
+
+<footer>
+  <div class="container">
+    LINE PDF DELIVERY SYSTEM — DESIGN DOC v1.0 — 2026.04
+  </div>
+</footer>
+
+<script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  const idx = ['stack','schema','api','env'].indexOf(name);
+  document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+}
+</script>
+</body>
+</html>

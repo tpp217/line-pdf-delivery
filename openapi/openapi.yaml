@@ -1,0 +1,1300 @@
+openapi: 3.1.0
+info:
+  title: LINE PDF DELIVERY SYSTEM API
+  version: 1.0.0
+  description: |
+    PDFフォルダを取り込み、LINEへ一括配信するシステムのAPI定義。
+    Base URL: /api/v1
+
+servers:
+  - url: /api/v1
+    description: App Server
+
+tags:
+  - name: dashboard
+    description: ダッシュボード
+  - name: uploads
+    description: PDFアップロード
+  - name: pdfs
+    description: PDFドキュメント
+  - name: recipients
+    description: 送信先管理
+  - name: routing-rules
+    description: 自動ルール管理
+  - name: send-batches
+    description: 一括送信バッチ
+  - name: send-jobs
+    description: 個別送信ジョブ
+  - name: history
+    description: 送信履歴
+  - name: settings
+    description: システム設定
+  - name: viewer
+    description: PDFビューア（受信者向け）
+
+# ─────────────────────────────────────────────
+paths:
+
+  # ── ダッシュボード ──────────────────────────
+  /dashboard/summary:
+    get:
+      tags: [dashboard]
+      summary: KPIサマリー取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity:
+    get:
+      tags: [dashboard]
+      summary: 時系列アクティビティ取得
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityPoint"
+
+  # ── アップロード ────────────────────────────
+  /uploads/folder:
+    post:
+      tags: [uploads]
+      summary: フォルダ内PDFを一括アップロード
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                sourceFolderName:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadFolderResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  # ── PDFドキュメント ─────────────────────────
+  /pdfs:
+    get:
+      tags: [pdfs]
+      summary: PDF一覧取得
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: extractStatus
+          in: query
+          schema:
+            $ref: "#/components/schemas/ExtractStatus"
+        - name: companyName
+          in: query
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfDocumentListResponse"
+
+  /pdfs/{id}:
+    get:
+      tags: [pdfs]
+      summary: PDF詳細取得
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfDocument"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    patch:
+      tags: [pdfs]
+      summary: PDF抽出結果を手修正
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PdfDocumentPatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfDocument"
+
+    delete:
+      tags: [pdfs]
+      summary: PDF削除（Storage + DB）
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: No Content
+
+  /pdfs/{id}/extract:
+    post:
+      tags: [pdfs]
+      summary: 単体PDFのテキスト抽出実行
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractResult"
+
+  /pdfs/extract-bulk:
+    post:
+      tags: [pdfs]
+      summary: 複数PDFの一括抽出
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+      responses:
+        "202":
+          description: Accepted (非同期処理)
+
+  # ── 送信先管理 ──────────────────────────────
+  /recipients:
+    get:
+      tags: [recipients]
+      summary: 送信先一覧取得
+      parameters:
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: isActive
+          in: query
+          schema:
+            type: boolean
+        - name: isDefault
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Recipient"
+
+    post:
+      tags: [recipients]
+      summary: 送信先新規登録
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipientCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+        "409":
+          description: lineUserId が既に存在
+
+  /recipients/{id}:
+    get:
+      tags: [recipients]
+      summary: 送信先詳細取得
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+
+    patch:
+      tags: [recipients]
+      summary: 送信先更新
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecipientPatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Recipient"
+
+    delete:
+      tags: [recipients]
+      summary: 送信先の論理削除
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: No Content
+
+  /recipients/import:
+    post:
+      tags: [recipients]
+      summary: CSV一括インポート
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResult"
+
+  /recipients/export:
+    get:
+      tags: [recipients]
+      summary: CSV出力
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ── ルール管理 ──────────────────────────────
+  /routing-rules:
+    get:
+      tags: [routing-rules]
+      summary: ルール一覧取得
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RoutingRule"
+
+    post:
+      tags: [routing-rules]
+      summary: ルール新規作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRuleCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRule"
+
+  /routing-rules/{id}:
+    patch:
+      tags: [routing-rules]
+      summary: ルール更新
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoutingRulePatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RoutingRule"
+
+    delete:
+      tags: [routing-rules]
+      summary: ルール削除
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: No Content
+
+  /routing-rules/suggest:
+    post:
+      tags: [routing-rules]
+      summary: 会社名から送信先候補を返す
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [companyName]
+              properties:
+                companyName:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestResult"
+
+  # ── 一括送信バッチ ───────────────────────────
+  /send-batches:
+    get:
+      tags: [send-batches]
+      summary: バッチ一覧取得
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/BatchStatus"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SendBatch"
+
+    post:
+      tags: [send-batches]
+      summary: バッチ作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendBatchCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendBatch"
+
+  /send-batches/{id}:
+    get:
+      tags: [send-batches]
+      summary: バッチ詳細取得（ジョブ一覧含む）
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendBatchDetail"
+
+    patch:
+      tags: [send-batches]
+      summary: バッチ更新（DRAFT状態のみ）
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendBatchPatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendBatch"
+
+  /send-batches/{id}/preview:
+    post:
+      tags: [send-batches]
+      summary: 送信前確認プレビュー
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendBatchPreview"
+
+  /send-batches/{id}/submit:
+    post:
+      tags: [send-batches]
+      summary: 送信キューへ投入（一括送信実行）
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202":
+          description: Accepted
+
+  /send-batches/{id}/cancel:
+    post:
+      tags: [send-batches]
+      summary: バッチキャンセル（PENDING ジョブをキャンセル）
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cancelledJobs:
+                    type: integer
+
+  # ── 個別送信ジョブ ───────────────────────────
+  /send-jobs:
+    get:
+      tags: [send-jobs]
+      summary: ジョブ一覧取得
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/JobStatus"
+        - name: recipientId
+          in: query
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SendJob"
+
+  /send-jobs/{id}:
+    get:
+      tags: [send-jobs]
+      summary: ジョブ詳細取得
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendJobDetail"
+
+  /send-jobs/{id}/retry:
+    post:
+      tags: [send-jobs]
+      summary: 単件再送
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "202":
+          description: Accepted
+
+  /send-jobs/retry-bulk:
+    post:
+      tags: [send-jobs]
+      summary: 失敗ジョブ一括再送
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                    format: uuid
+                batchId:
+                  type: string
+                  format: uuid
+                  description: batchId 指定で対象バッチ内の全失敗を再送
+      responses:
+        "202":
+          description: Accepted
+
+  # ── 履歴 ────────────────────────────────────
+  /history:
+    get:
+      tags: [history]
+      summary: 送信履歴一覧
+      parameters:
+        - name: recipientId
+          in: query
+          schema:
+            type: string
+        - name: companyName
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/JobStatus"
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryListResponse"
+
+  /history/export:
+    get:
+      tags: [history]
+      summary: 履歴 CSV 出力
+      responses:
+        "200":
+          description: OK
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  # ── 設定 ────────────────────────────────────
+  /settings:
+    get:
+      tags: [settings]
+      summary: システム設定取得（トークンはマスク）
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSetting"
+
+    patch:
+      tags: [settings]
+      summary: システム設定更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppSettingPatch"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppSetting"
+
+  /settings/test-line:
+    post:
+      tags: [settings]
+      summary: LINE トークン疎通確認
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  botName:
+                    type: string
+                  message:
+                    type: string
+
+  /settings/test-storage:
+    post:
+      tags: [settings]
+      summary: Supabase Storage 接続確認
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+
+  # ── PDFビューア（受信者向け） ────────────────
+  /v/{token}:
+    get:
+      tags: [viewer]
+      summary: 署名付きトークンからPDFを表示
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "302":
+          description: 署名付きURLへリダイレクト
+        "404":
+          description: トークン無効または期限切れ
+
+# ─────────────────────────────────────────────
+components:
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not Found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+
+    # ── 共通 ────────────────────────────────────
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    # ── Enum ────────────────────────────────────
+    ExtractStatus:
+      type: string
+      enum: [PENDING, PROCESSING, DONE, FAILED]
+
+    BatchStatus:
+      type: string
+      enum: [DRAFT, QUEUED, PROCESSING, COMPLETED, PARTIAL, FAILED]
+
+    JobStatus:
+      type: string
+      enum: [PENDING, PROCESSING, SENT, FAILED, CANCELLED]
+
+    MatchType:
+      type: string
+      enum: [EXACT, CONTAINS, REGEX]
+
+    DeliveryMode:
+      type: string
+      enum: [PUSH, MULTICAST]
+
+    EventType:
+      type: string
+      enum: [CREATED, QUEUED, SENT, FAILED, RETRIED, URL_OPENED, CANCELLED]
+
+    # ── ダッシュボード ───────────────────────────
+    DashboardSummary:
+      type: object
+      properties:
+        totalPdfs:
+          type: integer
+        totalSent:
+          type: integer
+        totalFailed:
+          type: integer
+        sentToday:
+          type: integer
+        recentJobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendJob"
+
+    ActivityPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        sent:
+          type: integer
+        failed:
+          type: integer
+
+    # ── アップロード ─────────────────────────────
+    UploadFolderResult:
+      type: object
+      properties:
+        uploadBatchId:
+          type: string
+          format: uuid
+        acceptedFiles:
+          type: integer
+        ignoredFiles:
+          type: integer
+        documentIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    # ── PDF ─────────────────────────────────────
+    PdfDocument:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        uploadBatchId:
+          type: string
+          format: uuid
+        originalFileName:
+          type: string
+        storageBucket:
+          type: string
+        storagePath:
+          type: string
+        fileSizeBytes:
+          type: integer
+          format: int64
+        pageCount:
+          type: integer
+          nullable: true
+        extractStatus:
+          $ref: "#/components/schemas/ExtractStatus"
+        companyName:
+          type: string
+          nullable: true
+        personName:
+          type: string
+          nullable: true
+        companyNameManual:
+          type: string
+          nullable: true
+        personNameManual:
+          type: string
+          nullable: true
+        extractionConfidence:
+          type: number
+          nullable: true
+        uploadedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PdfDocumentPatch:
+      type: object
+      properties:
+        companyNameManual:
+          type: string
+        personNameManual:
+          type: string
+
+    PdfDocumentListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PdfDocument"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    ExtractResult:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        extractStatus:
+          $ref: "#/components/schemas/ExtractStatus"
+        companyName:
+          type: string
+          nullable: true
+        personName:
+          type: string
+          nullable: true
+        pageCount:
+          type: integer
+          nullable: true
+
+    # ── 送信先 ───────────────────────────────────
+    Recipient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        lineUserId:
+          type: string
+        memo:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        isDefault:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RecipientCreate:
+      type: object
+      required: [displayName, lineUserId]
+      properties:
+        displayName:
+          type: string
+          maxLength: 120
+        lineUserId:
+          type: string
+          maxLength: 64
+        memo:
+          type: string
+        isActive:
+          type: boolean
+          default: true
+        isDefault:
+          type: boolean
+          default: false
+
+    RecipientPatch:
+      type: object
+      properties:
+        displayName:
+          type: string
+        memo:
+          type: string
+        isActive:
+          type: boolean
+        isDefault:
+          type: boolean
+
+    ImportResult:
+      type: object
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    # ── ルール ───────────────────────────────────
+    RoutingRule:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        matchType:
+          $ref: "#/components/schemas/MatchType"
+        companyKey:
+          type: string
+        recipientId:
+          type: string
+          format: uuid
+        recipient:
+          $ref: "#/components/schemas/Recipient"
+        priority:
+          type: integer
+        isActive:
+          type: boolean
+        lastHitAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    RoutingRuleCreate:
+      type: object
+      required: [companyKey, recipientId]
+      properties:
+        matchType:
+          $ref: "#/components/schemas/MatchType"
+        companyKey:
+          type: string
+        recipientId:
+          type: string
+          format: uuid
+        priority:
+          type: integer
+          default: 0
+
+    RoutingRulePatch:
+      type: object
+      properties:
+        matchType:
+          $ref: "#/components/schemas/MatchType"
+        companyKey:
+          type: string
+        recipientId:
+          type: string
+          format: uuid
+        priority:
+          type: integer
+        isActive:
+          type: boolean
+
+    SuggestResult:
+      type: object
+      properties:
+        matchedRules:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoutingRule"
+        suggestedRecipients:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recipient"
+
+    # ── 送信バッチ ───────────────────────────────
+    SendBatchItem:
+      type: object
+      required: [pdfDocumentId, recipientIds]
+      properties:
+        pdfDocumentId:
+          type: string
+          format: uuid
+        recipientIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        messageTitle:
+          type: string
+
+    SendBatchCreate:
+      type: object
+      required: [title, items]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendBatchItem"
+
+    SendBatchPatch:
+      type: object
+      properties:
+        title:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendBatchItem"
+
+    SendBatch:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          $ref: "#/components/schemas/BatchStatus"
+        totalJobs:
+          type: integer
+        successJobs:
+          type: integer
+        failedJobs:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SendBatchDetail:
+      allOf:
+        - $ref: "#/components/schemas/SendBatch"
+        - type: object
+          properties:
+            jobs:
+              type: array
+              items:
+                $ref: "#/components/schemas/SendJob"
+
+    SendBatchPreview:
+      type: object
+      properties:
+        totalJobs:
+          type: integer
+        totalRecipients:
+          type: integer
+        totalPdfs:
+          type: integer
+        warningRecipients:
+          type: array
+          description: LINE ID が未検証の送信先など
+          items:
+            $ref: "#/components/schemas/Recipient"
+
+    # ── 送信ジョブ ───────────────────────────────
+    SendJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sendBatchId:
+          type: string
+          format: uuid
+        pdfDocumentId:
+          type: string
+          format: uuid
+        recipientId:
+          type: string
+          format: uuid
+        deliveryMode:
+          $ref: "#/components/schemas/DeliveryMode"
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        messageTitle:
+          type: string
+          nullable: true
+        signedUrl:
+          type: string
+          nullable: true
+        signedUrlExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lineRequestId:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        retryCount:
+          type: integer
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SendJobDetail:
+      allOf:
+        - $ref: "#/components/schemas/SendJob"
+        - type: object
+          properties:
+            pdfDocument:
+              $ref: "#/components/schemas/PdfDocument"
+            recipient:
+              $ref: "#/components/schemas/Recipient"
+            deliveryEvents:
+              type: array
+              items:
+                $ref: "#/components/schemas/DeliveryEvent"
+
+    DeliveryEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sendJobId:
+          type: string
+          format: uuid
+        eventType:
+          $ref: "#/components/schemas/EventType"
+        payload:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    # ── 履歴 ────────────────────────────────────
+    HistoryListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SendJobDetail"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+
+    # ── 設定 ────────────────────────────────────
+    AppSetting:
+      type: object
+      properties:
+        lineChannelAccessToken:
+          type: string
+          description: "マスク表示: ****xxxx"
+        lineChannelSecret:
+          type: string
+          description: "マスク表示: ****xxxx"
+        defaultSignedUrlExpiryHours:
+          type: integer
+        maxRetryCount:
+          type: integer
+        viewerBaseUrl:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    AppSettingPatch:
+      type: object
+      properties:
+        lineChannelAccessToken:
+          type: string
+        lineChannelSecret:
+          type: string
+        defaultSignedUrlExpiryHours:
+          type: integer
+        maxRetryCount:
+          type: integer
+        viewerBaseUrl:
+          type: string

@@ -1,0 +1,227 @@
+// LINE PDF DELIVERY SYSTEM — Prisma Schema v1.0
+// DB: Supabase PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─────────────────────────────────────────────
+// 送信先管理
+// ─────────────────────────────────────────────
+model Recipient {
+  id           String   @id @default(uuid())
+  displayName  String   @db.VarChar(120)
+  lineUserId   String   @unique @db.VarChar(64)
+  memo         String?  @db.Text
+  isActive     Boolean  @default(true)
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sendJobs     SendJob[]
+  routingRules RoutingRule[]
+
+  @@index([isActive])
+  @@map("recipients")
+}
+
+// ─────────────────────────────────────────────
+// フォルダアップロード単位
+// ─────────────────────────────────────────────
+model PdfUploadBatch {
+  id               String   @id @default(uuid())
+  batchName        String   @db.VarChar(200)
+  sourceFolderName String?  @db.VarChar(255)
+  totalFiles       Int      @default(0)
+  totalPdfFiles    Int      @default(0)
+  createdAt        DateTime @default(now())
+
+  documents PdfDocument[]
+
+  @@map("pdf_upload_batches")
+}
+
+// ─────────────────────────────────────────────
+// PDF本体 + 抽出結果
+// ─────────────────────────────────────────────
+model PdfDocument {
+  id                   String        @id @default(uuid())
+  uploadBatchId        String
+  originalFileName     String        @db.VarChar(255)
+  storageBucket        String        @default("pdfs") @db.VarChar(80)
+  storagePath          String        @db.VarChar(500)
+  fileSizeBytes        BigInt
+  pageCount            Int?
+  extractedText        String?       @db.Text
+  extractStatus        ExtractStatus @default(PENDING)
+  companyName          String?       @db.VarChar(255)
+  personName           String?       @db.VarChar(255)
+  companyNameManual    String?       @db.VarChar(255)
+  personNameManual     String?       @db.VarChar(255)
+  extractionConfidence Decimal?      @db.Decimal(5, 2)
+  uploadedAt           DateTime      @default(now())
+  deletedAt            DateTime?
+
+  uploadBatch PdfUploadBatch @relation(fields: [uploadBatchId], references: [id])
+  sendJobs    SendJob[]
+
+  @@index([uploadBatchId])
+  @@index([extractStatus])
+  @@index([companyName])
+  @@map("pdf_documents")
+}
+
+enum ExtractStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// 自動送信先ルール
+// ─────────────────────────────────────────────
+model RoutingRule {
+  id          String    @id @default(uuid())
+  matchType   MatchType @default(CONTAINS)
+  companyKey  String    @db.VarChar(255)
+  recipientId String
+  priority    Int       @default(0)
+  isActive    Boolean   @default(true)
+  lastHitAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  recipient Recipient @relation(fields: [recipientId], references: [id])
+
+  @@index([companyKey])
+  @@index([isActive, priority(sort: Desc)])
+  @@map("routing_rules")
+}
+
+enum MatchType {
+  EXACT
+  CONTAINS
+  REGEX
+}
+
+// ─────────────────────────────────────────────
+// 一括送信バッチ
+// ─────────────────────────────────────────────
+model SendBatch {
+  id          String      @id @default(uuid())
+  title       String      @db.VarChar(200)
+  status      BatchStatus @default(DRAFT)
+  totalJobs   Int         @default(0)
+  successJobs Int         @default(0)
+  failedJobs  Int         @default(0)
+  createdAt   DateTime    @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  sendJobs SendJob[]
+
+  @@map("send_batches")
+}
+
+enum BatchStatus {
+  DRAFT
+  QUEUED
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// 個別送信ジョブ（1PDF × 1送信先）
+// ─────────────────────────────────────────────
+model SendJob {
+  id                 String       @id @default(uuid())
+  sendBatchId        String
+  pdfDocumentId      String
+  recipientId        String
+  deliveryMode       DeliveryMode @default(PUSH)
+  status             JobStatus    @default(PENDING)
+  messageTitle       String?      @db.VarChar(255)
+  signedUrl          String?      @db.Text
+  signedUrlExpiresAt DateTime?
+  lineRequestId      String?      @db.VarChar(120)
+  errorMessage       String?      @db.Text
+  retryCount         Int          @default(0)
+  sentAt             DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  sendBatch      SendBatch       @relation(fields: [sendBatchId], references: [id])
+  pdfDocument    PdfDocument     @relation(fields: [pdfDocumentId], references: [id])
+  recipient      Recipient       @relation(fields: [recipientId], references: [id])
+  deliveryEvents DeliveryEvent[]
+
+  @@unique([sendBatchId, pdfDocumentId, recipientId])
+  @@index([status])
+  @@index([recipientId, sentAt(sort: Desc)])
+  @@index([pdfDocumentId])
+  @@map("send_jobs")
+}
+
+enum DeliveryMode {
+  PUSH
+  MULTICAST
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// 配信イベントログ
+// ─────────────────────────────────────────────
+model DeliveryEvent {
+  id         String    @id @default(uuid())
+  sendJobId  String
+  eventType  EventType
+  payload    Json?
+  createdAt  DateTime  @default(now())
+
+  sendJob SendJob @relation(fields: [sendJobId], references: [id])
+
+  @@index([sendJobId, createdAt(sort: Desc)])
+  @@index([eventType])
+  @@map("delivery_events")
+}
+
+enum EventType {
+  CREATED
+  QUEUED
+  SENT
+  FAILED
+  RETRIED
+  URL_OPENED
+  CANCELLED
+}
+
+// ─────────────────────────────────────────────
+// システム設定（シングルトン）
+// ─────────────────────────────────────────────
+model AppSetting {
+  id                          String   @id @default("singleton")
+  lineChannelAccessTokenEnc   String?  @db.Text
+  lineChannelSecretEnc        String?  @db.Text
+  defaultSignedUrlExpiryHours Int      @default(72)
+  maxRetryCount               Int      @default(3)
+  viewerBaseUrl               String?  @db.VarChar(500)
+  updatedAt                   DateTime @updatedAt
+
+  @@map("app_settings")
+}
