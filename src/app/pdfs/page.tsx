@@ -23,10 +23,32 @@ type PdfListResponse = {
   pageSize: number;
 };
 
+async function readAllEntries(
+  entry: FileSystemEntry,
+  result: File[],
+): Promise<void> {
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve) =>
+      (entry as FileSystemFileEntry).file(resolve),
+    );
+    result.push(file);
+  } else if (entry.isDirectory) {
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    let batch: FileSystemEntry[] = [];
+    do {
+      batch = await new Promise<FileSystemEntry[]>((resolve) =>
+        reader.readEntries(resolve),
+      );
+      for (const child of batch) await readAllEntries(child, result);
+    } while (batch.length > 0);
+  }
+}
+
 export default function PdfsPage() {
   const [data, setData] = useState<PdfListResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -42,38 +64,81 @@ export default function PdfsPage() {
     fetchPdfs();
   }, [fetchPdfs]);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const uploadFiles = useCallback(
+    async (files: File[], folderName?: string) => {
+      if (files.length === 0) return;
+      setUploading(true);
+
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append("files", file);
+      }
+      formData.append("sourceFolderName", folderName || "ブラウザアップロード");
+
+      try {
+        const res = await fetch("/api/v1/uploads/folder", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          alert(
+            `${result.acceptedFiles}件のPDFを登録しました` +
+              (result.ignoredFiles > 0
+                ? ` (${result.ignoredFiles}件はPDF以外のためスキップ)`
+                : ""),
+          );
+          fetchPdfs();
+        } else {
+          const err = await res.json();
+          alert(`エラー: ${err.error}`);
+        }
+      } catch (e) {
+        alert(`通信エラー: ${e instanceof Error ? e.message : "不明"}`);
+      }
+
+      setUploading(false);
+    },
+    [fetchPdfs],
+  );
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    setUploading(true);
-
-    const formData = new FormData();
-    for (const file of Array.from(files)) {
-      formData.append("files", file);
-    }
-    const firstFile = Array.from(files)[0];
-    const folderName =
-      firstFile?.webkitRelativePath?.split("/")[0] || "ブラウザアップロード";
-    formData.append("sourceFolderName", folderName);
-
-    const res = await fetch("/api/v1/uploads/folder", {
-      method: "POST",
-      body: formData,
-    });
-
-    if (res.ok) {
-      const result = await res.json();
-      alert(
-        `${result.acceptedFiles}件のPDFをアップロードしました${result.ignoredFiles > 0 ? ` (${result.ignoredFiles}件のPDF以外のファイルをスキップ)` : ""}`,
-      );
-      fetchPdfs();
-    } else {
-      const err = await res.json();
-      alert(`エラー: ${err.error}`);
-    }
-
-    setUploading(false);
+    uploadFiles(Array.from(files));
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+
+    const items = e.dataTransfer.items;
+    if (!items || items.length === 0) return;
+
+    const allFiles: File[] = [];
+    const entries = Array.from(items)
+      .map((i) => i.webkitGetAsEntry?.())
+      .filter(Boolean) as FileSystemEntry[];
+
+    for (const entry of entries) {
+      await readAllEntries(entry, allFiles);
+    }
+
+    if (allFiles.length === 0) {
+      const fallbackFiles = Array.from(e.dataTransfer.files);
+      if (fallbackFiles.length > 0) {
+        uploadFiles(fallbackFiles);
+        return;
+      }
+      alert("対応するファイルが見つかりませんでした");
+      return;
+    }
+
+    const folderEntry = entries.find((e) => e.isDirectory);
+    uploadFiles(allFiles, folderEntry?.name);
   };
 
   const handleExtract = async (id: string) => {
@@ -122,71 +187,56 @@ export default function PdfsPage() {
           </Link>
           <h1 className="text-xl font-bold mt-1">PDF管理</h1>
         </div>
-        <div
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          onDrop={async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const items = e.dataTransfer.items;
-            if (!items || items.length === 0) return;
-            const allFiles: File[] = [];
-            const entries = Array.from(items).map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
-            async function readEntry(entry: FileSystemEntry) {
-              if (entry.isFile) {
-                const file = await new Promise<File>((resolve) => (entry as FileSystemFileEntry).file(resolve));
-                allFiles.push(file);
-              } else if (entry.isDirectory) {
-                const reader = (entry as FileSystemDirectoryEntry).createReader();
-                const children = await new Promise<FileSystemEntry[]>((resolve) => reader.readEntries(resolve));
-                for (const child of children) await readEntry(child);
-              }
-            }
-            for (const entry of entries) await readEntry(entry!);
-            if (allFiles.length > 0) {
-              const dt = new DataTransfer();
-              allFiles.forEach((f) => dt.items.add(f));
-              if (fileInputRef.current) {
-                fileInputRef.current.files = dt.files;
-                fileInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
-              }
-            }
-          }}
-          className="flex gap-2 items-center"
+      </div>
+
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        className={`border-2 border-dashed rounded-lg p-8 mb-6 text-center transition-colors ${
+          dragging
+            ? "border-zinc-400 bg-zinc-900"
+            : "border-zinc-700 hover:border-zinc-600"
+        }`}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.zip"
+          multiple
+          onChange={handleFileInput}
+          className="hidden"
+          id="pdf-upload"
+        />
+        <label
+          htmlFor="pdf-upload"
+          className={`inline-block px-5 py-2.5 text-sm font-medium rounded cursor-pointer transition-colors ${
+            uploading
+              ? "bg-zinc-700 text-zinc-400 cursor-wait"
+              : "bg-zinc-100 text-zinc-900 hover:bg-white"
+          }`}
         >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.zip"
-            multiple
-            onChange={handleUpload}
-            className="hidden"
-            id="pdf-upload"
-          />
-          <label
-            htmlFor="pdf-upload"
-            className={`px-4 py-2 text-sm font-medium rounded cursor-pointer transition-colors ${
-              uploading
-                ? "bg-zinc-700 text-zinc-400 cursor-wait"
-                : "bg-zinc-100 text-zinc-900 hover:bg-white"
-            }`}
-          >
-            {uploading ? "アップロード中..." : "+ アップロード"}
-          </label>
-          <span className="text-xs text-zinc-600">PDF / ZIP / フォルダをD&D可</span>
-        </div>
+          {uploading ? "アップロード中..." : "ファイルを選択"}
+        </label>
+        <p className="text-zinc-500 text-xs mt-3">
+          PDF・ZIPファイルを選択、またはフォルダをここにドラッグ&ドロップ
+        </p>
+        <p className="text-zinc-600 text-xs mt-1">
+          ZIP内のフォルダ・ネストZIPも自動展開します
+        </p>
       </div>
 
       {loading ? (
         <p className="text-zinc-500 text-sm">読み込み中...</p>
       ) : !data || data.items.length === 0 ? (
-        <p className="text-zinc-500 text-sm">
-          PDFがありません。「アップロード」ボタンかドラッグ&ドロップで追加してください。
-        </p>
+        <p className="text-zinc-500 text-sm">PDFがありません。</p>
       ) : (
         <>
-          <div className="text-xs text-zinc-500 mb-3">
-            全 {data.total} 件
-          </div>
+          <div className="text-xs text-zinc-500 mb-3">全 {data.total} 件</div>
           <div className="border border-zinc-800 rounded-lg overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-zinc-900 text-zinc-400 text-xs">
