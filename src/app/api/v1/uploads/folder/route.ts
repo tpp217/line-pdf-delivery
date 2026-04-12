@@ -98,6 +98,12 @@ export async function POST(request: NextRequest) {
 
     const personName = pdf.name.replace(/\.pdf$/i, '')
 
+    const { data: person } = await supabase
+      .from('persons')
+      .upsert({ name: personName }, { onConflict: 'name' })
+      .select('id')
+      .single()
+
     const { data: doc, error: docErr } = await supabase
       .from('pdf_documents')
       .insert({
@@ -108,6 +114,7 @@ export async function POST(request: NextRequest) {
         fileSizeBytes: pdf.size,
         extractStatus: 'DONE',
         personName,
+        personId: person?.id || null,
       })
       .select('id')
       .single()
