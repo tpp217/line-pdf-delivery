@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { NextRequest } from 'next/server'
+import { randomUUID } from 'crypto'
 import JSZip from 'jszip'
 
 type PdfEntry = { name: string; data: Buffer; size: number }
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
   const documentIds: string[] = []
 
   for (const pdf of pdfs) {
-    const storagePath = `${batch.id}/${pdf.name}`
+    const storagePath = `${batch.id}/${randomUUID()}.pdf`
 
     const { error: uploadErr } = await supabase.storage
       .from('pdfs')
