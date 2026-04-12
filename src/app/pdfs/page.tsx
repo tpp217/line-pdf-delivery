@@ -123,7 +123,7 @@ export default function PdfsPage() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf"
+            accept=".pdf,.zip"
             multiple
             onChange={handleUpload}
             className="hidden"
@@ -137,7 +137,7 @@ export default function PdfsPage() {
                 : "bg-zinc-100 text-zinc-900 hover:bg-white"
             }`}
           >
-            {uploading ? "アップロード中..." : "+ PDFアップロード"}
+            {uploading ? "アップロード中..." : "+ PDF / ZIPアップロード"}
           </label>
         </div>
       </div>
@@ -146,7 +146,7 @@ export default function PdfsPage() {
         <p className="text-zinc-500 text-sm">読み込み中...</p>
       ) : !data || data.items.length === 0 ? (
         <p className="text-zinc-500 text-sm">
-          PDFがありません。「PDFアップロード」から追加してください。
+          PDFがありません。「PDF / ZIPアップロード」から追加してください。
         </p>
       ) : (
         <>

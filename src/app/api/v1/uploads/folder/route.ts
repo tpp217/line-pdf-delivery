@@ -1,17 +1,52 @@
 import { supabase } from '@/lib/supabase'
 import { NextRequest } from 'next/server'
+import JSZip from 'jszip'
+
+type PdfEntry = { name: string; data: Buffer; size: number }
+
+async function extractPdfsFromFiles(files: File[]): Promise<{ pdfs: PdfEntry[]; totalFiles: number }> {
+  const pdfs: PdfEntry[] = []
+  let totalFiles = files.length
+
+  for (const file of files) {
+    const isZip =
+      file.type === 'application/zip' ||
+      file.type === 'application/x-zip-compressed' ||
+      file.name.toLowerCase().endsWith('.zip')
+
+    if (isZip) {
+      const zip = await JSZip.loadAsync(await file.arrayBuffer())
+      const entries = Object.values(zip.files).filter(
+        (e) => !e.dir && e.name.toLowerCase().endsWith('.pdf'),
+      )
+      totalFiles += entries.length - 1
+
+      for (const entry of entries) {
+        const buf = await entry.async('nodebuffer')
+        const fileName = entry.name.split('/').pop() || entry.name
+        pdfs.push({ name: fileName, data: buf, size: buf.length })
+      }
+    } else if (
+      file.type === 'application/pdf' ||
+      file.name.toLowerCase().endsWith('.pdf')
+    ) {
+      const buf = Buffer.from(await file.arrayBuffer())
+      pdfs.push({ name: file.name, data: buf, size: file.size })
+    }
+  }
+
+  return { pdfs, totalFiles }
+}
 
 export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const files = formData.getAll('files') as File[]
   const sourceFolderName = formData.get('sourceFolderName') as string | null
 
-  const pdfFiles = files.filter(
-    (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
-  )
+  const { pdfs, totalFiles } = await extractPdfsFromFiles(files)
 
-  if (pdfFiles.length === 0) {
-    return Response.json({ error: 'PDFファイルが含まれていません' }, { status: 400 })
+  if (pdfs.length === 0) {
+    return Response.json({ error: 'PDFファイルが含まれていません（ZIPの中身も確認済み）' }, { status: 400 })
   }
 
   const { data: batch, error: batchErr } = await supabase
@@ -19,8 +54,8 @@ export async function POST(request: NextRequest) {
     .insert({
       batchName: sourceFolderName || `アップロード ${new Date().toLocaleString('ja-JP')}`,
       sourceFolderName: sourceFolderName || null,
-      totalFiles: files.length,
-      totalPdfFiles: pdfFiles.length,
+      totalFiles,
+      totalPdfFiles: pdfs.length,
     })
     .select()
     .single()
@@ -29,20 +64,18 @@ export async function POST(request: NextRequest) {
 
   const documentIds: string[] = []
 
-  for (const file of pdfFiles) {
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const storagePath = `${batch.id}/${file.name}`
+  for (const pdf of pdfs) {
+    const storagePath = `${batch.id}/${pdf.name}`
 
     const { error: uploadErr } = await supabase.storage
       .from('pdfs')
-      .upload(storagePath, buffer, {
+      .upload(storagePath, pdf.data, {
         contentType: 'application/pdf',
         upsert: false,
       })
 
     if (uploadErr) {
-      console.error(`Upload failed: ${file.name}`, uploadErr.message)
+      console.error(`Upload failed: ${pdf.name}`, uploadErr.message)
       continue
     }
 
@@ -50,10 +83,10 @@ export async function POST(request: NextRequest) {
       .from('pdf_documents')
       .insert({
         uploadBatchId: batch.id,
-        originalFileName: file.name,
+        originalFileName: pdf.name,
         storageBucket: 'pdfs',
         storagePath,
-        fileSizeBytes: file.size,
+        fileSizeBytes: pdf.size,
         extractStatus: 'PENDING',
       })
       .select('id')
@@ -66,7 +99,7 @@ export async function POST(request: NextRequest) {
     {
       uploadBatchId: batch.id,
       acceptedFiles: documentIds.length,
-      ignoredFiles: files.length - pdfFiles.length,
+      ignoredFiles: totalFiles - pdfs.length,
       documentIds,
     },
     { status: 201 },
