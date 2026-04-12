@@ -4,9 +4,31 @@ import JSZip from 'jszip'
 
 type PdfEntry = { name: string; data: Buffer; size: number }
 
+async function extractPdfsFromZip(zipData: ArrayBuffer | Buffer, pdfs: PdfEntry[]): Promise<number> {
+  const zip = await JSZip.loadAsync(zipData)
+  let count = 0
+
+  for (const entry of Object.values(zip.files)) {
+    if (entry.dir) continue
+    const lower = entry.name.toLowerCase()
+
+    if (lower.endsWith('.pdf')) {
+      const buf = await entry.async('nodebuffer')
+      const fileName = entry.name.split('/').pop() || entry.name
+      pdfs.push({ name: fileName, data: buf, size: buf.length })
+      count++
+    } else if (lower.endsWith('.zip')) {
+      const nested = await entry.async('arraybuffer')
+      count += await extractPdfsFromZip(nested, pdfs)
+    }
+  }
+
+  return count
+}
+
 async function extractPdfsFromFiles(files: File[]): Promise<{ pdfs: PdfEntry[]; totalFiles: number }> {
   const pdfs: PdfEntry[] = []
-  let totalFiles = files.length
+  let totalFiles = 0
 
   for (const file of files) {
     const isZip =
@@ -15,23 +37,17 @@ async function extractPdfsFromFiles(files: File[]): Promise<{ pdfs: PdfEntry[]; 
       file.name.toLowerCase().endsWith('.zip')
 
     if (isZip) {
-      const zip = await JSZip.loadAsync(await file.arrayBuffer())
-      const entries = Object.values(zip.files).filter(
-        (e) => !e.dir && e.name.toLowerCase().endsWith('.pdf'),
-      )
-      totalFiles += entries.length - 1
-
-      for (const entry of entries) {
-        const buf = await entry.async('nodebuffer')
-        const fileName = entry.name.split('/').pop() || entry.name
-        pdfs.push({ name: fileName, data: buf, size: buf.length })
-      }
+      const count = await extractPdfsFromZip(await file.arrayBuffer(), pdfs)
+      totalFiles += count
     } else if (
       file.type === 'application/pdf' ||
       file.name.toLowerCase().endsWith('.pdf')
     ) {
       const buf = Buffer.from(await file.arrayBuffer())
       pdfs.push({ name: file.name, data: buf, size: file.size })
+      totalFiles++
+    } else {
+      totalFiles++
     }
   }
 
