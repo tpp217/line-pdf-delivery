@@ -29,7 +29,6 @@ export default function PdfsPage() {
   const [uploading, setUploading] = useState(false);
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPdfs = useCallback(async (page = 1) => {
     setLoading(true);
@@ -75,7 +74,6 @@ export default function PdfsPage() {
 
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    if (folderInputRef.current) folderInputRef.current.value = "";
   };
 
   const handleExtract = async (id: string) => {
@@ -124,27 +122,37 @@ export default function PdfsPage() {
           </Link>
           <h1 className="text-xl font-bold mt-1">PDF管理</h1>
         </div>
-        <div className="flex gap-2">
-          <input
-            ref={folderInputRef}
-            type="file"
-            /* @ts-expect-error webkitdirectory is non-standard */
-            webkitdirectory=""
-            directory=""
-            onChange={handleUpload}
-            className="hidden"
-            id="folder-upload"
-          />
-          <label
-            htmlFor="folder-upload"
-            className={`px-4 py-2 text-sm font-medium rounded cursor-pointer transition-colors ${
-              uploading
-                ? "bg-zinc-700 text-zinc-400 cursor-wait"
-                : "bg-zinc-100 text-zinc-900 hover:bg-white"
-            }`}
-          >
-            {uploading ? "アップロード中..." : "+ フォルダ"}
-          </label>
+        <div
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const items = e.dataTransfer.items;
+            if (!items || items.length === 0) return;
+            const allFiles: File[] = [];
+            const entries = Array.from(items).map((i) => i.webkitGetAsEntry?.()).filter(Boolean);
+            async function readEntry(entry: FileSystemEntry) {
+              if (entry.isFile) {
+                const file = await new Promise<File>((resolve) => (entry as FileSystemFileEntry).file(resolve));
+                allFiles.push(file);
+              } else if (entry.isDirectory) {
+                const reader = (entry as FileSystemDirectoryEntry).createReader();
+                const children = await new Promise<FileSystemEntry[]>((resolve) => reader.readEntries(resolve));
+                for (const child of children) await readEntry(child);
+              }
+            }
+            for (const entry of entries) await readEntry(entry!);
+            if (allFiles.length > 0) {
+              const dt = new DataTransfer();
+              allFiles.forEach((f) => dt.items.add(f));
+              if (fileInputRef.current) {
+                fileInputRef.current.files = dt.files;
+                fileInputRef.current.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            }
+          }}
+          className="flex gap-2 items-center"
+        >
           <input
             ref={fileInputRef}
             type="file"
@@ -159,11 +167,12 @@ export default function PdfsPage() {
             className={`px-4 py-2 text-sm font-medium rounded cursor-pointer transition-colors ${
               uploading
                 ? "bg-zinc-700 text-zinc-400 cursor-wait"
-                : "border border-zinc-600 text-zinc-300 hover:border-zinc-400"
+                : "bg-zinc-100 text-zinc-900 hover:bg-white"
             }`}
           >
-            {uploading ? "..." : "+ PDF / ZIP"}
+            {uploading ? "アップロード中..." : "+ アップロード"}
           </label>
+          <span className="text-xs text-zinc-600">PDF / ZIP / フォルダをD&D可</span>
         </div>
       </div>
 
@@ -171,7 +180,7 @@ export default function PdfsPage() {
         <p className="text-zinc-500 text-sm">読み込み中...</p>
       ) : !data || data.items.length === 0 ? (
         <p className="text-zinc-500 text-sm">
-          PDFがありません。「PDF / ZIPアップロード」から追加してください。
+          PDFがありません。「アップロード」ボタンかドラッグ&ドロップで追加してください。
         </p>
       ) : (
         <>
