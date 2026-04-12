@@ -49,7 +49,8 @@ export default function PdfsPage() {
   const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [extractingId, setExtractingId] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] = useState<string>("all");
+  const [selectedYear, setSelectedYear] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -65,20 +66,35 @@ export default function PdfsPage() {
     fetchPdfs();
   }, [fetchPdfs]);
 
-  const ymTabs = useMemo(() => {
-    const yms = new Set<string>();
-    allPdfs.forEach((p) => yms.add(toYm(p.uploadedAt)));
-    return Array.from(yms).sort().reverse();
+  const years = useMemo(() => {
+    const s = new Set<string>();
+    allPdfs.forEach((p) => s.add(new Date(p.uploadedAt).getFullYear().toString()));
+    return Array.from(s).sort().reverse();
   }, [allPdfs]);
 
+  const yearPdfs = useMemo(() => {
+    if (selectedYear === "all") return allPdfs;
+    return allPdfs.filter((p) => new Date(p.uploadedAt).getFullYear().toString() === selectedYear);
+  }, [allPdfs, selectedYear]);
+
+  const months = useMemo(() => {
+    const s = new Set<string>();
+    yearPdfs.forEach((p) => s.add(String(new Date(p.uploadedAt).getMonth() + 1).padStart(2, "0")));
+    return Array.from(s).sort().reverse();
+  }, [yearPdfs]);
+
   const filteredPdfs = useMemo(() => {
-    if (selectedTab === "all") return allPdfs;
-    return allPdfs.filter((p) => toYm(p.uploadedAt) === selectedTab);
-  }, [allPdfs, selectedTab]);
+    if (selectedMonth === "all") return yearPdfs;
+    return yearPdfs.filter((p) => String(new Date(p.uploadedAt).getMonth() + 1).padStart(2, "0") === selectedMonth);
+  }, [yearPdfs, selectedMonth]);
+
+  useEffect(() => {
+    setSelectedMonth("all");
+  }, [selectedYear]);
 
   useEffect(() => {
     setSelected(new Set());
-  }, [selectedTab]);
+  }, [selectedYear, selectedMonth]);
 
   const uploadFiles = useCallback(
     async (files: File[], folderName?: string) => {
@@ -239,31 +255,59 @@ export default function PdfsPage() {
         <p className="text-zinc-500 text-sm">PDFがありません。</p>
       ) : (
         <>
-          {/* 年月タブ */}
-          <div className="flex gap-1 mb-4 flex-wrap">
+          {/* 年タブ */}
+          <div className="flex gap-1 mb-2 flex-wrap">
             <button
-              onClick={() => setSelectedTab("all")}
+              onClick={() => setSelectedYear("all")}
               className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                selectedTab === "all" ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                selectedYear === "all" ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
               }`}
             >
-              全て ({allPdfs.length})
+              全年 ({allPdfs.length})
             </button>
-            {ymTabs.map((ym) => {
-              const count = allPdfs.filter((p) => toYm(p.uploadedAt) === ym).length;
+            {years.map((y) => {
+              const count = allPdfs.filter((p) => new Date(p.uploadedAt).getFullYear().toString() === y).length;
               return (
                 <button
-                  key={ym}
-                  onClick={() => setSelectedTab(ym)}
+                  key={y}
+                  onClick={() => setSelectedYear(y)}
                   className={`px-3 py-1.5 text-xs rounded transition-colors ${
-                    selectedTab === ym ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                    selectedYear === y ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
                   }`}
                 >
-                  {ym} ({count})
+                  {y}年 ({count})
                 </button>
               );
             })}
           </div>
+
+          {/* 月タブ（年を選択している場合のみ表示） */}
+          {selectedYear !== "all" && (
+            <div className="flex gap-1 mb-4 flex-wrap">
+              <button
+                onClick={() => setSelectedMonth("all")}
+                className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                  selectedMonth === "all" ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                }`}
+              >
+                全月 ({yearPdfs.length})
+              </button>
+              {months.map((m) => {
+                const count = yearPdfs.filter((p) => String(new Date(p.uploadedAt).getMonth() + 1).padStart(2, "0") === m).length;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setSelectedMonth(m)}
+                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                      selectedMonth === m ? "bg-zinc-100 text-zinc-900 font-medium" : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                    }`}
+                  >
+                    {parseInt(m)}月 ({count})
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* 一括操作バー */}
           <div className="flex items-center gap-3 mb-3">
@@ -280,13 +324,20 @@ export default function PdfsPage() {
                 {deleting ? "削除中..." : `選択を削除 (${selected.size})`}
               </button>
             )}
-            {selectedTab !== "all" && (
+            {selectedYear !== "all" && (
               <button
-                onClick={() => handleBulkDelete(filteredPdfs.map((p) => p.id), `${selectedTab}の全${filteredPdfs.length}件`)}
+                onClick={() => {
+                  const label = selectedMonth !== "all"
+                    ? `${selectedYear}年${parseInt(selectedMonth)}月の全${filteredPdfs.length}件`
+                    : `${selectedYear}年の全${filteredPdfs.length}件`;
+                  handleBulkDelete(filteredPdfs.map((p) => p.id), label);
+                }}
                 disabled={deleting}
                 className="text-xs text-red-400 hover:text-red-300 disabled:text-zinc-600"
               >
-                {deleting ? "削除中..." : `${selectedTab}を全削除`}
+                {deleting ? "削除中..." : selectedMonth !== "all"
+                  ? `${parseInt(selectedMonth)}月を全削除`
+                  : `${selectedYear}年を全削除`}
               </button>
             )}
           </div>
