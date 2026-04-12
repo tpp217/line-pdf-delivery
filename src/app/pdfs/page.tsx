@@ -199,17 +199,6 @@ export default function PdfsPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
   };
 
-  const statusLabel = (s: string) => {
-    const map: Record<string, { label: string; cls: string }> = {
-      PENDING: { label: "未抽出", cls: "bg-zinc-800 text-zinc-400" },
-      PROCESSING: { label: "処理中", cls: "bg-yellow-900/50 text-yellow-400" },
-      DONE: { label: "完了", cls: "bg-emerald-900/50 text-emerald-400" },
-      FAILED: { label: "失敗", cls: "bg-red-900/50 text-red-400" },
-    };
-    const m = map[s] || { label: s, cls: "bg-zinc-800 text-zinc-400" };
-    return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span>;
-  };
-
   return (
     <main className="flex-1 flex flex-col p-6 max-w-5xl mx-auto w-full">
       <div className="flex items-center justify-between mb-6">
@@ -344,10 +333,8 @@ export default function PdfsPage() {
                     />
                   </th>
                   <th className="text-left p-3">ファイル名</th>
-                  <th className="text-right p-3">サイズ</th>
-                  <th className="text-center p-3">抽出</th>
-                  <th className="text-left p-3">会社名</th>
                   <th className="text-left p-3">氏名</th>
+                  <th className="text-right p-3">サイズ</th>
                   <th className="text-right p-3">操作</th>
                 </tr>
               </thead>
@@ -362,14 +349,9 @@ export default function PdfsPage() {
                         className="rounded border-zinc-600"
                       />
                     </td>
-                    <td className="p-3 font-mono text-xs max-w-60 truncate">{pdf.originalFileName}</td>
-                    <td className="p-3 text-right text-xs text-zinc-500">
-                      {formatSize(pdf.fileSizeBytes)}
-                      {pdf.pageCount && <span className="ml-1">({pdf.pageCount}p)</span>}
-                    </td>
-                    <td className="p-3 text-center">{statusLabel(pdf.extractStatus)}</td>
-                    <td className="p-3 text-xs">{pdf.companyNameManual || pdf.companyName || <span className="text-zinc-600">-</span>}</td>
-                    <td className="p-3 text-xs">{pdf.personNameManual || pdf.personName || <span className="text-zinc-600">-</span>}</td>
+                    <td className="p-3 text-xs max-w-60 truncate">{pdf.originalFileName}</td>
+                    <td className="p-3 text-xs">{pdf.personName || <span className="text-zinc-600">-</span>}</td>
+                    <td className="p-3 text-right text-xs text-zinc-500">{formatSize(pdf.fileSizeBytes)}</td>
                     <td className="p-3 text-right">
                       <button
                         onClick={() => handleDeleteSingle(pdf.id, pdf.originalFileName)}
