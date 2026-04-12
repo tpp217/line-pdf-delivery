@@ -1,15 +1,19 @@
-import { prisma } from '@/lib/prisma'
+import { supabase } from '@/lib/supabase'
 import { NextRequest } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params
-  const recipient = await prisma.recipient.findUnique({ where: { id } })
-  if (!recipient) {
-    return Response.json({ error: '送信先が見つかりません' }, { status: 404 })
-  }
-  return Response.json(recipient)
+  const { data, error } = await supabase
+    .from('recipients')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (!data) return Response.json({ error: '送信先が見つかりません' }, { status: 404 })
+  return Response.json(data)
 }
 
 export async function PATCH(request: NextRequest, ctx: Context) {
@@ -17,29 +21,31 @@ export async function PATCH(request: NextRequest, ctx: Context) {
   const body = await request.json()
   const { displayName, memo, isActive, isDefault } = body
 
-  const data: Record<string, unknown> = {}
-  if (displayName !== undefined) data.displayName = displayName
-  if (memo !== undefined) data.memo = memo
-  if (isActive !== undefined) data.isActive = isActive
-  if (isDefault !== undefined) data.isDefault = isDefault
+  const updates: Record<string, unknown> = {}
+  if (displayName !== undefined) updates.displayName = displayName
+  if (memo !== undefined) updates.memo = memo
+  if (isActive !== undefined) updates.isActive = isActive
+  if (isDefault !== undefined) updates.isDefault = isDefault
 
-  try {
-    const recipient = await prisma.recipient.update({ where: { id }, data })
-    return Response.json(recipient)
-  } catch {
-    return Response.json({ error: '送信先が見つかりません' }, { status: 404 })
-  }
+  const { data, error } = await supabase
+    .from('recipients')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .maybeSingle()
+
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  if (!data) return Response.json({ error: '送信先が見つかりません' }, { status: 404 })
+  return Response.json(data)
 }
 
 export async function DELETE(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params
-  try {
-    await prisma.recipient.update({
-      where: { id },
-      data: { isActive: false },
-    })
-    return new Response(null, { status: 204 })
-  } catch {
-    return Response.json({ error: '送信先が見つかりません' }, { status: 404 })
-  }
+  const { error } = await supabase
+    .from('recipients')
+    .update({ isActive: false })
+    .eq('id', id)
+
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return new Response(null, { status: 204 })
 }

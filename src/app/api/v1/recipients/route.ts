@@ -1,4 +1,4 @@
-import { prisma } from '@/lib/prisma'
+import { supabase } from '@/lib/supabase'
 import { NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -7,22 +7,22 @@ export async function GET(request: NextRequest) {
   const isActive = searchParams.get('isActive')
   const isDefault = searchParams.get('isDefault')
 
-  const where: Record<string, unknown> = {}
-  if (isActive !== null) where.isActive = isActive === 'true'
-  if (isDefault !== null) where.isDefault = isDefault === 'true'
+  let query = supabase
+    .from('recipients')
+    .select('*')
+    .order('createdAt', { ascending: false })
+
+  if (isActive !== null) query = query.eq('isActive', isActive === 'true')
+  if (isDefault !== null) query = query.eq('isDefault', isDefault === 'true')
   if (keyword) {
-    where.OR = [
-      { displayName: { contains: keyword, mode: 'insensitive' } },
-      { memo: { contains: keyword, mode: 'insensitive' } },
-    ]
+    query = query.or(
+      `displayName.ilike.%${keyword}%,memo.ilike.%${keyword}%`,
+    )
   }
 
-  const recipients = await prisma.recipient.findMany({
-    where,
-    orderBy: { createdAt: 'desc' },
-  })
-
-  return Response.json(recipients)
+  const { data, error } = await query
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json(data)
 }
 
 export async function POST(request: NextRequest) {
@@ -36,9 +36,12 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const existing = await prisma.recipient.findUnique({
-    where: { lineUserId },
-  })
+  const { data: existing } = await supabase
+    .from('recipients')
+    .select('id')
+    .eq('lineUserId', lineUserId)
+    .maybeSingle()
+
   if (existing) {
     return Response.json(
       { error: 'この lineUserId は既に登録されています' },
@@ -46,15 +49,18 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  const recipient = await prisma.recipient.create({
-    data: {
+  const { data, error } = await supabase
+    .from('recipients')
+    .insert({
       displayName,
       lineUserId,
       memo: memo ?? null,
       isActive: isActive ?? true,
       isDefault: isDefault ?? false,
-    },
-  })
+    })
+    .select()
+    .single()
 
-  return Response.json(recipient, { status: 201 })
+  if (error) return Response.json({ error: error.message }, { status: 500 })
+  return Response.json(data, { status: 201 })
 }
