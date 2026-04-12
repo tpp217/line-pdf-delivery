@@ -29,6 +29,7 @@ export default function PdfsPage() {
   const [uploading, setUploading] = useState(false);
   const [extractingId, setExtractingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPdfs = useCallback(async (page = 1) => {
     setLoading(true);
@@ -51,7 +52,10 @@ export default function PdfsPage() {
     for (const file of Array.from(files)) {
       formData.append("files", file);
     }
-    formData.append("sourceFolderName", "ブラウザアップロード");
+    const firstFile = Array.from(files)[0];
+    const folderName =
+      firstFile?.webkitRelativePath?.split("/")[0] || "ブラウザアップロード";
+    formData.append("sourceFolderName", folderName);
 
     const res = await fetch("/api/v1/uploads/folder", {
       method: "POST",
@@ -71,6 +75,7 @@ export default function PdfsPage() {
 
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
+    if (folderInputRef.current) folderInputRef.current.value = "";
   };
 
   const handleExtract = async (id: string) => {
@@ -119,7 +124,27 @@ export default function PdfsPage() {
           </Link>
           <h1 className="text-xl font-bold mt-1">PDF管理</h1>
         </div>
-        <div>
+        <div className="flex gap-2">
+          <input
+            ref={folderInputRef}
+            type="file"
+            /* @ts-expect-error webkitdirectory is non-standard */
+            webkitdirectory=""
+            directory=""
+            onChange={handleUpload}
+            className="hidden"
+            id="folder-upload"
+          />
+          <label
+            htmlFor="folder-upload"
+            className={`px-4 py-2 text-sm font-medium rounded cursor-pointer transition-colors ${
+              uploading
+                ? "bg-zinc-700 text-zinc-400 cursor-wait"
+                : "bg-zinc-100 text-zinc-900 hover:bg-white"
+            }`}
+          >
+            {uploading ? "アップロード中..." : "+ フォルダ"}
+          </label>
           <input
             ref={fileInputRef}
             type="file"
@@ -134,10 +159,10 @@ export default function PdfsPage() {
             className={`px-4 py-2 text-sm font-medium rounded cursor-pointer transition-colors ${
               uploading
                 ? "bg-zinc-700 text-zinc-400 cursor-wait"
-                : "bg-zinc-100 text-zinc-900 hover:bg-white"
+                : "border border-zinc-600 text-zinc-300 hover:border-zinc-400"
             }`}
           >
-            {uploading ? "アップロード中..." : "+ PDF / ZIPアップロード"}
+            {uploading ? "..." : "+ PDF / ZIP"}
           </label>
         </div>
       </div>
