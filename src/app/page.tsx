@@ -3,7 +3,8 @@ import Link from "next/link";
 const navItems = [
   { href: "/recipients", label: "送信先管理", desc: "LINEユーザーの登録・編集" },
   { href: "/pdfs", label: "PDF管理", desc: "PDFアップロード・テキスト抽出" },
-  { href: "#", label: "送信バッチ", desc: "一括送信の作成・実行", disabled: true },
+  { href: "/routing-rules", label: "ルーティング", desc: "氏名→送信先の自動マッチルール" },
+  { href: "/send-batches", label: "送信バッチ", desc: "一括送信の作成・実行" },
   { href: "#", label: "送信履歴", desc: "配信結果の確認", disabled: true },
   { href: "#", label: "設定", desc: "LINE API・Storage接続設定", disabled: true },
 ];
