@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { extractTextFromPdf, extractNames } from '@/lib/pdf-extract'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
 import JSZip from 'jszip'
@@ -96,6 +97,9 @@ export async function POST(request: NextRequest) {
       continue
     }
 
+    const { text, pageCount } = await extractTextFromPdf(pdf.data)
+    const { companyName, personName } = extractNames(text)
+
     const { data: doc, error: docErr } = await supabase
       .from('pdf_documents')
       .insert({
@@ -104,7 +108,12 @@ export async function POST(request: NextRequest) {
         storageBucket: 'pdfs',
         storagePath,
         fileSizeBytes: pdf.size,
-        extractStatus: 'PENDING',
+        extractStatus: 'DONE',
+        extractedText: text || null,
+        pageCount: pageCount || null,
+        companyName,
+        personName,
+        extractionConfidence: companyName ? 80 : 0,
       })
       .select('id')
       .single()

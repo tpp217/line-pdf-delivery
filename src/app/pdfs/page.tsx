@@ -48,7 +48,6 @@ export default function PdfsPage() {
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [extractingId, setExtractingId] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<string>("all");
   const [selectedMonth, setSelectedMonth] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -156,17 +155,6 @@ export default function PdfsPage() {
     }
     const folderEntry = entries.find((e) => e.isDirectory);
     uploadFiles(allFiles, folderEntry?.name);
-  };
-
-  const handleExtract = async (id: string) => {
-    setExtractingId(id);
-    const res = await fetch(`/api/v1/pdfs/${id}/extract`, { method: "POST" });
-    if (!res.ok) {
-      const err = await res.json();
-      alert(`抽出エラー: ${err.error}`);
-    }
-    await fetchPdfs();
-    setExtractingId(null);
   };
 
   const handleDeleteSingle = async (id: string, name: string) => {
@@ -382,16 +370,7 @@ export default function PdfsPage() {
                     <td className="p-3 text-center">{statusLabel(pdf.extractStatus)}</td>
                     <td className="p-3 text-xs">{pdf.companyNameManual || pdf.companyName || <span className="text-zinc-600">-</span>}</td>
                     <td className="p-3 text-xs">{pdf.personNameManual || pdf.personName || <span className="text-zinc-600">-</span>}</td>
-                    <td className="p-3 text-right space-x-2">
-                      {(pdf.extractStatus === "PENDING" || pdf.extractStatus === "FAILED") && (
-                        <button
-                          onClick={() => handleExtract(pdf.id)}
-                          disabled={extractingId === pdf.id}
-                          className="text-xs text-zinc-400 hover:text-zinc-100 disabled:text-zinc-600"
-                        >
-                          {extractingId === pdf.id ? "抽出中..." : "抽出"}
-                        </button>
-                      )}
+                    <td className="p-3 text-right">
                       <button
                         onClick={() => handleDeleteSingle(pdf.id, pdf.originalFileName)}
                         className="text-xs text-zinc-500 hover:text-red-400"
