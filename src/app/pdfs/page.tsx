@@ -49,8 +49,9 @@ export default function PdfsPage() {
   const [dragging, setDragging] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [sending, setSending] = useState(false);
-  const [selectedYear, setSelectedYear] = useState<string>("all");
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedYear, setSelectedYear] = useState<string>("");
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
+  const [initialized, setInitialized] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showSendModal, setShowSendModal] = useState(false);
@@ -117,7 +118,23 @@ export default function PdfsPage() {
     return result;
   }, [yearPdfs, selectedMonth, selectedCategory, personCatMap]);
 
-  useEffect(() => { setSelectedMonth("all"); }, [selectedYear]);
+  // 初回データ取得後、最新の年・月を自動選択
+  useEffect(() => {
+    if (!initialized && years.length > 0 && months.length > 0) {
+      setSelectedYear(years[0]);
+      setInitialized(true);
+    }
+  }, [initialized, years, months]);
+
+  // 年変更時に最新月を自動選択
+  useEffect(() => {
+    if (initialized && months.length > 0) {
+      setSelectedMonth(months[0]);
+    } else if (initialized) {
+      setSelectedMonth("all");
+    }
+  }, [selectedYear, months, initialized]);
+
   useEffect(() => { setSelected(new Set()); }, [selectedYear, selectedMonth, selectedCategory]);
 
   // カテゴリ選択で一括チェック
@@ -274,12 +291,12 @@ export default function PdfsPage() {
             </div>
 
             {/* 月タブ */}
-            {selectedYear !== "all" && (
+            {selectedYear !== "all" && selectedYear !== "" && (
               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
                 <button onClick={() => setSelectedMonth("all")} style={tabStyle(selectedMonth === "all")}>ALL ({yearPdfs.length})</button>
                 {months.map((m) => (
                   <button key={m} onClick={() => setSelectedMonth(m)} style={tabStyle(selectedMonth === m)}>
-                    {parseInt(m)}M ({yearPdfs.filter((p) => toMonth(p.uploadedAt) === m).length})
+                    {parseInt(m)}月 ({yearPdfs.filter((p) => toMonth(p.uploadedAt) === m).length})
                   </button>
                 ))}
               </div>
