@@ -118,22 +118,20 @@ export default function PdfsPage() {
     return result;
   }, [yearPdfs, selectedMonth, selectedCategory, personCatMap]);
 
-  // 初回データ取得後、最新の年・月を自動選択
+  // 初回データ取得後、最新の年を自動選択
   useEffect(() => {
-    if (!initialized && years.length > 0 && months.length > 0) {
+    if (!initialized && years.length > 0) {
       setSelectedYear(years[0]);
       setInitialized(true);
     }
-  }, [initialized, years, months]);
+  }, [initialized, years]);
 
   // 年変更時に最新月を自動選択
   useEffect(() => {
-    if (initialized && months.length > 0) {
+    if (selectedYear && selectedYear !== "all" && months.length > 0) {
       setSelectedMonth(months[0]);
-    } else if (initialized) {
-      setSelectedMonth("all");
     }
-  }, [selectedYear, months, initialized]);
+  }, [selectedYear, months]);
 
   useEffect(() => { setSelected(new Set()); }, [selectedYear, selectedMonth, selectedCategory]);
 
