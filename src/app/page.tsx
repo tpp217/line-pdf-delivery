@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
 
 const navItems = [
   { href: "/pdfs", label: "PDF管理", desc: "PDF取り込み・カテゴリ管理・LINE送信", icon: "◈" },
@@ -26,43 +25,21 @@ function HudCorners({ color = "rgba(0,255,255,0.6)" }: { color?: string }) {
 }
 
 export default function Home() {
-  const [time, setTime] = useState("");
-  useEffect(() => {
-    const update = () => setTime(new Date().toLocaleString("ja-JP", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).replace(/\//g, "."));
-    update();
-    const t = setInterval(update, 1000);
-    return () => clearInterval(t);
-  }, []);
-
   const clipMd = "polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)";
 
   return (
-    <div style={{ background: "#0a0a0f", minHeight: "100vh", color: "#e2e8f0", fontFamily: "'JetBrains Mono','Courier New',monospace", display: "flex", flexDirection: "column" }}>
-
-      {/* ヘッダー */}
-      <header style={{ borderBottom: "1px solid rgba(0,255,255,0.2)", padding: "0.6rem 1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(0,255,255,0.03)", boxShadow: "0 2px 20px rgba(0,255,255,0.08)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <span style={{ color: "rgba(0,255,255,0.4)", fontSize: "0.75rem" }}>[</span>
-          <span style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.15em" }}>LPD_SYSTEM</span>
-          <span style={{ color: "rgba(0,255,255,0.4)", fontSize: "0.75rem" }}>]</span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem", fontSize: "0.7rem", color: "#4a5568" }}>
-          <span>SYS_TIME: <span style={{ color: "#00ffff" }}>{time}</span></span>
-          <span style={{ color: "#00ff41" }}>● ONLINE</span>
-        </div>
-      </header>
-
+    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
       {/* メイン */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "3rem 2rem" }}>
         <div style={{ marginBottom: "3rem", textAlign: "center" }}>
-          <p style={{ fontSize: "0.65rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(0,255,255,0.5)", marginBottom: "0.5rem" }}>
+          <p style={{ fontSize: "0.75rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "rgba(0,255,255,0.5)", marginBottom: "0.5rem" }}>
             LINE PDF DELIVERY SYSTEM
           </p>
           <h1 style={{ fontSize: "3rem", fontWeight: "bold", letterSpacing: "0.3em", color: "#00ffff", textShadow: "0 0 20px rgba(0,255,255,0.6), 0 0 50px rgba(0,255,255,0.2)", margin: "0 0 0.5rem" }}>
             LPD
           </h1>
           <div style={{ width: "120px", height: "1px", background: "linear-gradient(90deg, transparent, #00ffff, transparent)", margin: "0 auto 0.75rem" }} />
-          <p style={{ fontSize: "0.72rem", color: "#4a5568", letterSpacing: "0.05em" }}>
+          <p style={{ fontSize: "0.8rem", color: "#718096", letterSpacing: "0.05em" }}>
             PDF一括取り込み → LINE個別配信
           </p>
         </div>
@@ -90,18 +67,18 @@ export default function Home() {
                 <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: "0.4rem", color: "#e2e8f0", letterSpacing: "0.05em" }}>
                   {item.label}
                 </div>
-                <div style={{ fontSize: "0.68rem", color: "#4a5568", lineHeight: 1.5 }}>
+                <div style={{ fontSize: "0.75rem", color: "#718096", lineHeight: 1.5 }}>
                   {item.desc}
                 </div>
               </div>
             </Link>
           ))}
         </div>
-      </main>
+      </div>
 
       {/* フッター */}
       <footer style={{ borderTop: "1px solid rgba(0,255,255,0.1)", padding: "0.5rem 1.5rem", textAlign: "center" }}>
-        <p style={{ fontSize: "0.62rem", color: "#4a5568", letterSpacing: "0.12em" }}>
+        <p style={{ fontSize: "0.7rem", color: "#718096", letterSpacing: "0.12em" }}>
           v1.0 // SYSTEM ONLINE
         </p>
       </footer>

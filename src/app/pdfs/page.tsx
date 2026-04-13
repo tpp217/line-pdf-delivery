@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
-import Link from "next/link";
 
 type PdfDocument = {
   id: string;
@@ -227,22 +226,21 @@ export default function PdfsPage() {
   const getPersonForPdf = (pdf: PdfDocument) => persons.find((p) => p.id === pdf.personId);
 
   const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: "0.25rem 0.65rem",
-    fontSize: "0.7rem",
+    padding: "0.3rem 0.7rem",
+    fontSize: "0.75rem",
     borderRadius: "4px",
-    border: `1px solid ${active ? "#00ffff" : "rgba(0,255,255,0.15)"}`,
+    border: `1px solid ${active ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
     background: active ? "#00ffff" : "transparent",
-    color: active ? "#0a0a0f" : "#4a5568",
+    color: active ? "#0a0a0f" : "#a0aec0",
     cursor: "pointer",
     fontFamily: "inherit",
   });
 
   return (
-    <div style={{ background: "#0a0a0f", minHeight: "100vh", color: "#e2e8f0", fontFamily: "'JetBrains Mono','Courier New',monospace", padding: "1.5rem" }}>
+    <div style={{ padding: "1.5rem" }}>
       <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
         <div style={{ marginBottom: "1.5rem" }}>
-          <Link href="/" style={{ color: "#4a5568", fontSize: "0.7rem", textDecoration: "none" }}>← HOME</Link>
-          <h1 style={{ fontSize: "1.2rem", fontWeight: "bold", letterSpacing: "0.12em", textTransform: "uppercase", color: "#00ffff", marginTop: "0.25rem" }}>PDF管理</h1>
+          <h1 style={{ fontSize: "1.2rem", fontWeight: "bold", letterSpacing: "0.12em", textTransform: "uppercase", color: "#00ffff", margin: 0 }}>PDF管理</h1>
         </div>
 
         {/* ドロップゾーン */}
@@ -256,13 +254,13 @@ export default function PdfsPage() {
           <label htmlFor="pdf-upload" style={{ background: "transparent", border: "1px solid #00ffff", color: uploading ? "#4a5568" : "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: uploading ? "wait" : "pointer", fontSize: "0.75rem", fontFamily: "inherit", display: "inline-block" }}>
             {uploading ? "UPLOADING..." : "SELECT FILES"}
           </label>
-          <p style={{ fontSize: "0.7rem", marginTop: "0.5rem", color: "#4a5568" }}>PDF・ZIP選択、またはフォルダをD&D</p>
+          <p style={{ fontSize: "0.75rem", marginTop: "0.5rem", color: "#718096" }}>PDF・ZIP選択、またはフォルダをD&D</p>
         </div>
 
         {loading ? (
-          <p style={{ color: "#4a5568", fontSize: "0.8rem" }}>LOADING...</p>
+          <p style={{ color: "#718096", fontSize: "0.8rem" }}>LOADING...</p>
         ) : allPdfs.length === 0 ? (
-          <p style={{ color: "#4a5568", fontSize: "0.8rem" }}>NO PDF FILES FOUND.</p>
+          <p style={{ color: "#718096", fontSize: "0.8rem" }}>NO PDF FILES FOUND.</p>
         ) : (
           <>
             {/* 年タブ */}
@@ -290,7 +288,7 @@ export default function PdfsPage() {
             {/* カテゴリフィルタ */}
             {allCategories.length > 0 && (
               <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", marginBottom: "1rem" }}>
-                <span style={{ fontSize: "0.7rem", color: "#00ffff", letterSpacing: "0.1em", marginRight: "0.25rem" }}>CATEGORY:</span>
+                <span style={{ fontSize: "0.75rem", color: "#00ffff", letterSpacing: "0.1em", marginRight: "0.25rem" }}>CATEGORY:</span>
                 <button onClick={() => handleCategorySelect("all")} style={tabStyle(selectedCategory === "all")}>ALL</button>
                 {allCategories.map((c) => (
                   <button key={c} onClick={() => handleCategorySelect(c)} style={tabStyle(selectedCategory === c)}>{c}</button>
@@ -300,7 +298,7 @@ export default function PdfsPage() {
 
             {/* 操作バー */}
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.75rem", color: "#4a5568" }}>
+              <span style={{ fontSize: "0.75rem", color: "#718096" }}>
                 {filteredPdfs.length} FILES{selected.size > 0 && ` / ${selected.size} SELECTED`}
               </span>
               {selected.size > 0 && (
@@ -320,11 +318,11 @@ export default function PdfsPage() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
                 <thead>
                   <tr>
-                    <th style={{ background: "#111827", color: "#00ffff", fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", width: "2rem" }}>
+                    <th style={{ background: "#111827", color: "#00ffff", fontSize: "0.75rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", width: "2rem" }}>
                       <input type="checkbox" checked={selected.size === filteredPdfs.length && filteredPdfs.length > 0} onChange={toggleSelectAll} />
                     </th>
                     {["FILE NAME","NAME","CATEGORY","SIZE","ACTION"].map((h, i) => (
-                      <th key={h} style={{ background: "#111827", color: "#00ffff", fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", textAlign: i >= 3 ? "right" : "left" }}>{h}</th>
+                      <th key={h} style={{ background: "#111827", color: "#00ffff", fontSize: "0.75rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", textAlign: i >= 3 ? "right" : "left" }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -341,19 +339,19 @@ export default function PdfsPage() {
                           {person?.categories?.length ? (
                             <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
                               {person.categories.map((c) => (
-                                <span key={c} style={{ border: "1px solid #00ffff", color: "#00ffff", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,255,0.06)" }}>{c}</span>
+                                <span key={c} style={{ border: "1px solid #00ffff", color: "#00ffff", fontSize: "0.75rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,255,0.06)" }}>{c}</span>
                               ))}
                             </div>
                           ) : (
-                            <button onClick={() => { if (person) { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); } }} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.7rem", fontFamily: "inherit" }}>
+                            <button onClick={() => { if (person) { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); } }} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
                               {person ? "+ SET" : "-"}
                             </button>
                           )}
                         </td>
-                        <td style={{ ...td, textAlign: "right", fontSize: "0.75rem", color: "#4a5568" }}>{formatSize(pdf.fileSizeBytes)}</td>
+                        <td style={{ ...td, textAlign: "right", fontSize: "0.75rem", color: "#718096" }}>{formatSize(pdf.fileSizeBytes)}</td>
                         <td style={{ ...td, textAlign: "right" }}>
                           {person && (
-                            <button onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }} style={{ background: "none", border: "none", color: "#00ffff", cursor: "pointer", fontSize: "0.7rem", fontFamily: "inherit" }}>EDIT</button>
+                            <button onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }} style={{ background: "none", border: "none", color: "#00ffff", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>EDIT</button>
                           )}
                         </td>
                       </tr>
@@ -370,11 +368,11 @@ export default function PdfsPage() {
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setEditingPerson(null)}>
             <div style={{ background: "#0d1117", border: "1px solid #00ffff", boxShadow: "0 0 12px rgba(0,255,255,0.4)", borderRadius: "6px", padding: "1.5rem", width: "22rem", fontFamily: "inherit" }} onClick={(e) => e.stopPropagation()}>
               <h3 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>{editingPerson.name} // CATEGORY</h3>
-              <p style={{ fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.75rem" }}>カンマ区切りで1〜3個 (例: 名古屋, 大阪)</p>
+              <p style={{ fontSize: "0.75rem", color: "#718096", marginBottom: "0.75rem" }}>カンマ区切りで1〜3個 (例: 名古屋, 大阪)</p>
               <input type="text" value={catInput} onChange={(e) => setCatInput(e.target.value)} autoFocus placeholder="名古屋, 大阪" style={{ background: "#111827", border: "1px solid rgba(0,255,255,0.2)", color: "#e2e8f0", borderRadius: "4px", padding: "0.45rem 0.75rem", fontSize: "0.8rem", width: "100%", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: "1rem" }} />
               <div style={{ display: "flex", gap: "0.75rem" }}>
                 <button onClick={handleSaveCategories} style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>SAVE</button>
-                <button onClick={() => setEditingPerson(null)} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>CANCEL</button>
+                <button onClick={() => setEditingPerson(null)} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>CANCEL</button>
               </div>
             </div>
           </div>
@@ -410,9 +408,9 @@ function SendModal({
         <h3 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "1rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>LINE SEND // {selected.size} FILES</h3>
 
         <div style={{ marginBottom: "1rem" }}>
-          <label style={{ display: "block", fontSize: "0.7rem", color: "#00ffff", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.5rem" }}>SELECT RECIPIENT</label>
+          <label style={{ display: "block", fontSize: "0.75rem", color: "#00ffff", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.5rem" }}>SELECT RECIPIENT</label>
           {recipients.length === 0 ? (
-            <p style={{ fontSize: "0.75rem", color: "#4a5568" }}>有効な送信先がありません。Botにメッセージを送ってもらうと自動登録されます。</p>
+            <p style={{ fontSize: "0.75rem", color: "#718096" }}>有効な送信先がありません。Botにメッセージを送ってもらうと自動登録されます。</p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxHeight: "12rem", overflowY: "auto" }}>
               {recipients.map((r) => (
@@ -420,7 +418,7 @@ function SendModal({
                   <input type="radio" name="recipient" checked={chosenId === r.id} onChange={() => setChosenId(r.id)} />
                   <span style={{ fontSize: "0.8rem" }}>{r.displayName}</span>
                   {(r as Record<string, unknown>).type === "group" && (
-                    <span style={{ border: "1px solid #ff00ff", color: "#ff00ff", fontSize: "0.65rem", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>GROUP</span>
+                    <span style={{ border: "1px solid #ff00ff", color: "#ff00ff", fontSize: "0.75rem", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>GROUP</span>
                   )}
                 </label>
               ))}
@@ -440,7 +438,7 @@ function SendModal({
           >
             {sending ? "SENDING..." : "SEND"}
           </button>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>CANCEL</button>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>CANCEL</button>
         </div>
       </div>
     </div>

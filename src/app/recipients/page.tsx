@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import Link from "next/link";
 
 type Recipient = {
   id: string;
@@ -14,24 +13,23 @@ type Recipient = {
 };
 
 const S = {
-  page: { background: "#0a0a0f", minHeight: "100vh", color: "#e2e8f0", fontFamily: "'JetBrains Mono','Courier New',monospace", padding: "1.5rem" } as React.CSSProperties,
+  page: { padding: "1.5rem" } as React.CSSProperties,
   wrap: { maxWidth: "900px", margin: "0 auto" } as React.CSSProperties,
-  backLink: { color: "#4a5568", fontSize: "0.7rem", textDecoration: "none" } as React.CSSProperties,
-  heading: { fontSize: "1.2rem", fontWeight: "bold", color: "#e2e8f0", marginTop: "0.25rem", letterSpacing: "0.05em" } as React.CSSProperties,
+  heading: { fontSize: "1.2rem", fontWeight: "bold", color: "#e2e8f0", margin: 0, letterSpacing: "0.05em" } as React.CSSProperties,
   btnCyan: { background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", letterSpacing: "0.05em" } as React.CSSProperties,
-  btnGhost: { background: "transparent", border: "1px solid #4a5568", color: "#4a5568", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" } as React.CSSProperties,
-  btnText: { background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.2rem 0.4rem" } as React.CSSProperties,
-  btnDanger: { background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.2rem 0.4rem" } as React.CSSProperties,
+  btnGhost: { background: "transparent", border: "1px solid #718096", color: "#718096", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" } as React.CSSProperties,
+  btnText: { background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.2rem 0.4rem" } as React.CSSProperties,
+  btnDanger: { background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.2rem 0.4rem" } as React.CSSProperties,
   table: { width: "100%", borderCollapse: "collapse" as const, fontSize: "0.8rem" },
-  th: { background: "#111827", color: "#00ffff", fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase" as const, padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", textAlign: "left" as const },
+  th: { background: "#111827", color: "#00ffff", fontSize: "0.75rem", letterSpacing: "0.08em", textTransform: "uppercase" as const, padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", textAlign: "left" as const },
   td: { padding: "0.6rem 0.75rem", color: "#e2e8f0", borderBottom: "1px solid rgba(0,255,255,0.07)" },
-  tdMuted: { padding: "0.6rem 0.75rem", color: "#4a5568", borderBottom: "1px solid rgba(0,255,255,0.07)", fontSize: "0.75rem" },
-  badgeCyan: { border: "1px solid #00ffff", color: "#00ffff", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,255,0.06)", marginLeft: "0.4rem" } as React.CSSProperties,
-  badgeGreen: { border: "1px solid #00ff41", color: "#00ff41", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,65,0.06)" } as React.CSSProperties,
-  badgeMuted: { border: "1px solid #4a5568", color: "#4a5568", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "transparent" } as React.CSSProperties,
-  badgeBlue: { border: "1px solid #60a5fa", color: "#60a5fa", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(96,165,250,0.06)" } as React.CSSProperties,
+  tdMuted: { padding: "0.6rem 0.75rem", color: "#718096", borderBottom: "1px solid rgba(0,255,255,0.07)", fontSize: "0.75rem" },
+  badgeCyan: { border: "1px solid #00ffff", color: "#00ffff", fontSize: "0.7rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,255,0.06)", marginLeft: "0.4rem" } as React.CSSProperties,
+  badgeGreen: { border: "1px solid #00ff41", color: "#00ff41", fontSize: "0.7rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,65,0.06)" } as React.CSSProperties,
+  badgeMuted: { border: "1px solid #718096", color: "#718096", fontSize: "0.7rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "transparent" } as React.CSSProperties,
+  badgeBlue: { border: "1px solid #60a5fa", color: "#60a5fa", fontSize: "0.7rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(96,165,250,0.06)" } as React.CSSProperties,
   tableWrap: { border: "1px solid rgba(0,255,255,0.15)", borderRadius: "6px", overflow: "hidden" } as React.CSSProperties,
-  emptyText: { color: "#4a5568", fontSize: "0.8rem" } as React.CSSProperties,
+  emptyText: { color: "#718096", fontSize: "0.8rem" } as React.CSSProperties,
 };
 
 export default function RecipientsPage() {
@@ -73,7 +71,6 @@ export default function RecipientsPage() {
       <div style={S.wrap}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
           <div>
-            <Link href="/" style={S.backLink}>← ホーム</Link>
             <h1 style={S.heading}>送信先管理</h1>
           </div>
           <button
@@ -226,18 +223,18 @@ function RecipientForm({
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
           <div>
-            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>表示名 *</label>
+            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>表示名 *</label>
             <input type="text" style={inputStyle} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="山田太郎" required />
           </div>
           <div>
-            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>LINE User ID *</label>
+            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>LINE User ID *</label>
             <input type="text" style={{ ...inputStyle, opacity: isEdit ? 0.5 : 1 }} value={lineUserId} onChange={(e) => setLineUserId(e.target.value)} placeholder="U1234567890..." required disabled={isEdit} />
-            {isEdit && <p style={{ fontSize: "0.65rem", color: "#4a5568", marginTop: "0.25rem" }}>変更不可</p>}
+            {isEdit && <p style={{ fontSize: "0.7rem", color: "#718096", marginTop: "0.25rem" }}>変更不可</p>}
           </div>
         </div>
 
         <div style={{ marginBottom: "0.75rem" }}>
-          <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>メモ</label>
+          <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>メモ</label>
           <input type="text" style={inputStyle} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="任意のメモ" />
         </div>
 
@@ -252,7 +249,7 @@ function RecipientForm({
           <button type="submit" disabled={saving} style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.4rem 1.25rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", opacity: saving ? 0.5 : 1 }}>
             {saving ? "保存中..." : isEdit ? "更新" : "登録"}
           </button>
-          <button type="button" onClick={onCancel} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
+          <button type="button" onClick={onCancel} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
             キャンセル
           </button>
         </div>
