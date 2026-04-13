@@ -30,7 +30,7 @@ export async function GET(_req: NextRequest, ctx: Context) {
 
   return new Response(buffer, {
     headers: {
-      'Content-Type': 'application/pdf',
+      'Content-Type': 'application/octet-stream',
       'Content-Disposition': `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
       'Content-Length': buffer.byteLength.toString(),
     },
