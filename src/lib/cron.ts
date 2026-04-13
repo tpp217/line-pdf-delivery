@@ -1,30 +1,41 @@
 /**
- * シンプルな cron 式パーサー
- * 対応パターン:
- *   "1 10 * * *"    → 毎日10:01
- *   "0 9 1 * *"     → 毎月1日 9:00
- *   "0 9 * * 1"     → 毎週月曜 9:00
- *   "0 9 1,15 * *"  → 毎月1日と15日 9:00
+ * シンプルな cron 式パーサー (JST ベース)
+ *
+ * cron 式の時刻は JST として解釈し、nextRunAt は UTC の ISO 文字列で返す。
+ * Vercel Cron (UTC) がチェックするときに正しく比較できる。
  */
+
+const JST_OFFSET = 9 * 60 // JST = UTC+9 (分)
+
+function toJST(date: Date): Date {
+  const utc = date.getTime() + date.getTimezoneOffset() * 60000
+  return new Date(utc + JST_OFFSET * 60000)
+}
+
+function fromJST(jstDate: Date): Date {
+  const utc = jstDate.getTime() - JST_OFFSET * 60000 + jstDate.getTimezoneOffset() * 60000
+  return new Date(utc)
+}
+
 export function getNextRun(cronExpression: string, after: Date = new Date()): Date {
   const [minute, hour, dayOfMonth, month, dayOfWeek] = cronExpression.split(' ')
 
-  const next = new Date(after)
-  next.setSeconds(0, 0)
-  next.setMinutes(next.getMinutes() + 1)
+  const jst = toJST(after)
+  jst.setSeconds(0, 0)
+  jst.setMinutes(jst.getMinutes() + 1)
 
   for (let i = 0; i < 366 * 24 * 60; i++) {
-    if (matches(next.getMinutes(), minute) &&
-        matches(next.getHours(), hour) &&
-        matches(next.getDate(), dayOfMonth) &&
-        matches(next.getMonth() + 1, month) &&
-        matches(next.getDay(), dayOfWeek)) {
-      return next
+    if (matches(jst.getMinutes(), minute) &&
+        matches(jst.getHours(), hour) &&
+        matches(jst.getDate(), dayOfMonth) &&
+        matches(jst.getMonth() + 1, month) &&
+        matches(jst.getDay(), dayOfWeek)) {
+      return fromJST(jst)
     }
-    next.setMinutes(next.getMinutes() + 1)
+    jst.setMinutes(jst.getMinutes() + 1)
   }
 
-  return next
+  return fromJST(jst)
 }
 
 function matches(value: number, pattern: string): boolean {
@@ -36,26 +47,4 @@ function matches(value: number, pattern: string): boolean {
     }
     return parseInt(p) === value
   })
-}
-
-/**
- * 人間が読める繰り返し説明を生成
- */
-export function describeCron(cron: string): string {
-  const [min, hour, dom, , dow] = cron.split(' ')
-  const time = `${hour.padStart(2, '0')}:${min.padStart(2, '0')}`
-
-  if (dom !== '*' && dow === '*') {
-    const days = dom.split(',').join('・')
-    return `毎月${days}日 ${time}`
-  }
-  if (dow !== '*' && dom === '*') {
-    const dayNames = ['日', '月', '火', '水', '木', '金', '土']
-    const days = dow.split(',').map((d) => dayNames[parseInt(d)] || d).join('・')
-    return `毎週${days}曜 ${time}`
-  }
-  if (dom === '*' && dow === '*') {
-    return `毎日 ${time}`
-  }
-  return cron
 }
