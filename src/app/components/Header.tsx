@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const navItems = [
-  { href: "/", label: "HOME" },
   { href: "/pdfs", label: "PDF管理" },
   { href: "/reminders", label: "リマインダー" },
   { href: "/recipients", label: "送信先" },
@@ -63,10 +62,7 @@ export default function Header() {
 
         <nav style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
           {navItems.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/" || pathname === ""
-                : pathname.startsWith(item.href);
+            const isActive = pathname.startsWith(item.href);
 
             return (
               <Link
