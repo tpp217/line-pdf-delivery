@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : request.nextUrl.origin
-    const dlLink = `${baseUrl}/dl/${pdf.id}`
+    const dlLink = `${baseUrl}/lpd/dl/${pdf.id}`
 
     const name = pdf.personName || pdf.originalFileName
     const text = `${name} の給与明細です。\n${dlLink}`
