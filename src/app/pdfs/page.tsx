@@ -205,7 +205,7 @@ export default function PdfsPage() {
   const handleSaveCategories = async () => {
     if (!editingPerson) return;
     const cats = catInput.split(/[,、\s]+/).map((s) => s.trim()).filter(Boolean);
-    await fetch(`/api/v1/persons/${editingPerson.id}`, {
+    await fetch(`/lpd/api/v1/persons/${editingPerson.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ categories: cats }),
     });

@@ -52,13 +52,13 @@ export default function RecipientsPage() {
 
   const handleDeactivate = async (id: string, name: string) => {
     if (!confirm(`「${name}」を無効化しますか？`)) return;
-    await fetch(`/api/v1/recipients/${id}`, { method: "DELETE" });
+    await fetch(`/lpd/api/v1/recipients/${id}`, { method: "DELETE" });
     fetchRecipients();
   };
 
   const handleRemove = async (id: string, name: string) => {
     if (!confirm(`「${name}」を完全に削除しますか？ この操作は取り消せません。`)) return;
-    await fetch(`/api/v1/recipients/${id}`, {
+    await fetch(`/lpd/api/v1/recipients/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ _delete: true }),
@@ -169,7 +169,7 @@ function RecipientForm({
     setError("");
     setSaving(true);
 
-    const url = isEdit ? `/api/v1/recipients/${target.id}` : "/api/v1/recipients";
+    const url = isEdit ? `/lpd/api/v1/recipients/${target.id}` : "/lpd/api/v1/recipients";
     const method = isEdit ? "PATCH" : "POST";
     const body = isEdit
       ? { displayName, memo: memo || null, isDefault }
