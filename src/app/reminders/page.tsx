@@ -42,8 +42,8 @@ export default function RemindersPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [rRes, rcRes] = await Promise.all([
-      fetch("/api/v1/reminders"),
-      fetch("/api/v1/recipients?isActive=true"),
+      fetch("/lpd/api/v1/reminders"),
+      fetch("/lpd/api/v1/recipients?isActive=true"),
     ]);
     setReminders(await rRes.json());
     setRecipients(await rcRes.json());
@@ -68,65 +68,80 @@ export default function RemindersPage() {
   };
 
   return (
-    <main className="flex-1 flex flex-col p-6 max-w-4xl mx-auto w-full">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <Link href="/" className="text-zinc-500 text-xs hover:text-zinc-300">← ホーム</Link>
-          <h1 className="text-xl font-bold mt-1">リマインダー</h1>
-          <p className="text-zinc-500 text-xs mt-1">指定日時にテキストを自動LINE送信</p>
+    <div style={{ background: "#0a0a0f", minHeight: "100vh", color: "#e2e8f0", fontFamily: "'JetBrains Mono','Courier New',monospace", padding: "1.5rem" }}>
+      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
+          <div>
+            <Link href="/" style={{ color: "#4a5568", fontSize: "0.7rem", textDecoration: "none" }}>← ホーム</Link>
+            <h1 style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#e2e8f0", marginTop: "0.25rem", letterSpacing: "0.05em" }}>リマインダー</h1>
+            <p style={{ color: "#4a5568", fontSize: "0.7rem", marginTop: "0.2rem" }}>指定日時にテキストを自動LINE送信</p>
+          </div>
+          <button
+            onClick={() => { setEditTarget(null); setShowForm(true); }}
+            style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}
+          >
+            + 新規作成
+          </button>
         </div>
-        <button
-          onClick={() => { setEditTarget(null); setShowForm(true); }}
-          className="px-4 py-2 bg-zinc-100 text-zinc-900 text-sm font-medium rounded hover:bg-white transition-colors"
-        >
-          + 新規作成
-        </button>
-      </div>
 
-      {showForm && (
-        <ReminderForm
-          target={editTarget}
-          recipients={recipients}
-          onDone={() => { setShowForm(false); setEditTarget(null); fetchData(); }}
-          onCancel={() => { setShowForm(false); setEditTarget(null); }}
-        />
-      )}
+        {showForm && (
+          <ReminderForm
+            target={editTarget}
+            recipients={recipients}
+            onDone={() => { setShowForm(false); setEditTarget(null); fetchData(); }}
+            onCancel={() => { setShowForm(false); setEditTarget(null); }}
+          />
+        )}
 
-      {loading ? <p className="text-zinc-500 text-sm">読み込み中...</p> : reminders.length === 0 ? (
-        <p className="text-zinc-500 text-sm">リマインダーがありません。</p>
-      ) : (
-        <div className="space-y-3">
-          {reminders.map((r) => (
-            <div key={r.id} className={`border rounded-lg p-4 ${r.isActive ? "border-zinc-700" : "border-zinc-800 opacity-50"}`}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-medium text-sm">{r.title}</div>
-                  <div className="text-xs text-zinc-400 mt-1">{describeCron(r.cronExpression)}</div>
-                  <div className="text-xs text-zinc-500 mt-1">→ {r.recipient?.displayName || "不明"}</div>
-                  <div className="text-xs text-zinc-600 mt-2 bg-zinc-900 rounded px-2 py-1 inline-block max-w-md truncate">
-                    {r.message}
+        {loading ? (
+          <p style={{ color: "#4a5568", fontSize: "0.8rem" }}>読み込み中...</p>
+        ) : reminders.length === 0 ? (
+          <p style={{ color: "#4a5568", fontSize: "0.8rem" }}>リマインダーがありません。</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            {reminders.map((r) => (
+              <div key={r.id} style={{
+                border: `1px solid ${r.isActive ? "rgba(0,255,255,0.25)" : "rgba(255,255,255,0.07)"}`,
+                borderRadius: "6px",
+                padding: "1rem",
+                background: "#0d1117",
+                opacity: r.isActive ? 1 : 0.55,
+              }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#e2e8f0" }}>{r.title}</div>
+                    <div style={{ fontSize: "0.72rem", color: "#00ffff", marginTop: "0.3rem" }}>{describeCron(r.cronExpression)}</div>
+                    <div style={{ fontSize: "0.72rem", color: "#4a5568", marginTop: "0.2rem" }}>→ {r.recipient?.displayName || "不明"}</div>
+                    <div style={{ fontSize: "0.72rem", color: "#4a5568", marginTop: "0.5rem", background: "#111827", borderRadius: "4px", padding: "0.25rem 0.5rem", display: "inline-block", maxWidth: "28rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.message}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.4rem", fontSize: "0.72rem" }}>
+                    <button
+                      onClick={() => handleToggle(r)}
+                      style={{
+                        border: `1px solid ${r.isActive ? "#00ff41" : "#4a5568"}`,
+                        color: r.isActive ? "#00ff41" : "#4a5568",
+                        background: r.isActive ? "rgba(0,255,65,0.06)" : "transparent",
+                        fontSize: "0.65rem", padding: "0.1rem 0.5rem", borderRadius: "3px", cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >
+                      {r.isActive ? "有効" : "無効"}
+                    </button>
+                    <div style={{ color: "#4a5568" }}>次回: {formatDate(r.nextRunAt)}</div>
+                    {r.lastRunAt && <div style={{ color: "#374151" }}>前回: {formatDate(r.lastRunAt)}</div>}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-2 text-xs">
-                  <button
-                    onClick={() => handleToggle(r)}
-                    className={`px-2 py-0.5 rounded ${r.isActive ? "bg-emerald-900/50 text-emerald-400" : "bg-zinc-800 text-zinc-500"}`}
-                  >
-                    {r.isActive ? "有効" : "無効"}
-                  </button>
-                  <div className="text-zinc-600">次回: {formatDate(r.nextRunAt)}</div>
-                  {r.lastRunAt && <div className="text-zinc-700">前回: {formatDate(r.lastRunAt)}</div>}
+                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", borderTop: "1px solid rgba(0,255,255,0.07)", paddingTop: "0.5rem" }}>
+                  <button onClick={() => { setEditTarget(r); setShowForm(true); }} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit", padding: "0.1rem 0.3rem" }}>編集</button>
+                  <button onClick={() => handleDelete(r)} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.72rem", fontFamily: "inherit", padding: "0.1rem 0.3rem" }}>削除</button>
                 </div>
               </div>
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => { setEditTarget(r); setShowForm(true); }} className="text-xs text-zinc-400 hover:text-zinc-100">編集</button>
-                <button onClick={() => handleDelete(r)} className="text-xs text-zinc-500 hover:text-red-400">削除</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </main>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -195,52 +210,81 @@ function ReminderForm({
     onDone();
   };
 
-  const inputClass = "w-full bg-white border border-zinc-300 rounded px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:border-zinc-500";
+  const inputStyle: React.CSSProperties = {
+    background: "#111827",
+    border: "1px solid rgba(0,255,255,0.2)",
+    color: "#e2e8f0",
+    borderRadius: "4px",
+    padding: "0.45rem 0.75rem",
+    fontSize: "0.8rem",
+    width: "100%",
+    outline: "none",
+    fontFamily: "inherit",
+    boxSizing: "border-box",
+  };
+
+  const scheduleOpts = [
+    { value: "daily", label: "毎日" },
+    { value: "weekly", label: "毎週" },
+    { value: "monthly", label: "毎月" },
+  ];
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onCancel}>
-      <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-base font-semibold text-zinc-900 mb-5">{isEdit ? "リマインダー編集" : "新規リマインダー"}</h2>
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
+      onClick={onCancel}
+    >
+      <div
+        style={{ background: "#0d1117", border: "1px solid #00ffff", boxShadow: "0 0 12px rgba(0,255,255,0.4)", borderRadius: "6px", padding: "1.5rem", width: "28rem", maxHeight: "90vh", overflowY: "auto", fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "1.25rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>
+          {isEdit ? "リマインダー編集" : "新規リマインダー"}
+        </h2>
 
-        {error && <p className="text-red-600 text-xs mb-3 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</p>}
+        {error && (
+          <p style={{ color: "#f87171", fontSize: "0.75rem", marginBottom: "0.75rem", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "4px", padding: "0.4rem 0.75rem" }}>
+            {error}
+          </p>
+        )}
 
         <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-xs text-zinc-500 mb-1">タイトル</label>
-            <input type="text" className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例: 月次報告リマインド" required />
+          <div style={{ marginBottom: "0.75rem" }}>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>タイトル</label>
+            <input type="text" style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例: 月次報告リマインド" required />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-xs text-zinc-500 mb-1">メッセージ</label>
-            <textarea className={inputClass + " h-20 resize-none"} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="LINE に送信するテキスト" required />
+          <div style={{ marginBottom: "0.75rem" }}>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>メッセージ</label>
+            <textarea style={{ ...inputStyle, height: "5rem", resize: "none" }} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="LINEに送信するテキスト" required />
           </div>
 
-          <div className="mb-4">
-            <label className="block text-xs text-zinc-500 mb-1">送信先</label>
-            <select className={inputClass} value={recipientId} onChange={(e) => setRecipientId(e.target.value)} required>
+          <div style={{ marginBottom: "0.75rem" }}>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>送信先</label>
+            <select style={inputStyle} value={recipientId} onChange={(e) => setRecipientId(e.target.value)} required>
               <option value="">選択</option>
               {recipients.map((r) => <option key={r.id} value={r.id}>{r.displayName}</option>)}
             </select>
           </div>
 
-          {/* 繰り返しタイプ */}
-          <div className="mb-4">
-            <label className="block text-xs text-zinc-500 mb-2">繰り返し</label>
-            <div className="flex gap-2">
-              {[
-                { value: "daily", label: "毎日" },
-                { value: "weekly", label: "毎週" },
-                { value: "monthly", label: "毎月" },
-              ].map((opt) => (
+          <div style={{ marginBottom: "0.75rem" }}>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.5rem" }}>繰り返し</label>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              {scheduleOpts.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => { setScheduleType(opt.value); setSelectedDays([]); }}
-                  className={`px-4 py-1.5 text-sm rounded transition-colors ${
-                    scheduleType === opt.value
-                      ? "bg-zinc-900 text-white"
-                      : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100"
-                  }`}
+                  style={{
+                    padding: "0.3rem 0.75rem",
+                    fontSize: "0.75rem",
+                    borderRadius: "4px",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    border: `1px solid ${scheduleType === opt.value ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
+                    background: scheduleType === opt.value ? "#00ffff" : "transparent",
+                    color: scheduleType === opt.value ? "#0a0a0f" : "#4a5568",
+                  }}
                 >
                   {opt.label}
                 </button>
@@ -248,21 +292,25 @@ function ReminderForm({
             </div>
           </div>
 
-          {/* 曜日選択 (毎週) */}
           {scheduleType === "weekly" && (
-            <div className="mb-4">
-              <label className="block text-xs text-zinc-500 mb-2">曜日</label>
-              <div className="flex gap-1">
+            <div style={{ marginBottom: "0.75rem" }}>
+              <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.5rem" }}>曜日</label>
+              <div style={{ display: "flex", gap: "0.4rem" }}>
                 {DAY_NAMES.map((name, i) => (
                   <button
                     key={i}
                     type="button"
                     onClick={() => toggleDay(i)}
-                    className={`w-10 h-10 rounded text-sm transition-colors ${
-                      selectedDays.includes(i)
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100"
-                    }`}
+                    style={{
+                      width: "2.2rem", height: "2.2rem",
+                      borderRadius: "4px",
+                      fontSize: "0.75rem",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      border: `1px solid ${selectedDays.includes(i) ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
+                      background: selectedDays.includes(i) ? "#00ffff" : "transparent",
+                      color: selectedDays.includes(i) ? "#0a0a0f" : "#4a5568",
+                    }}
                   >
                     {name}
                   </button>
@@ -271,21 +319,25 @@ function ReminderForm({
             </div>
           )}
 
-          {/* 日選択 (毎月) */}
           {scheduleType === "monthly" && (
-            <div className="mb-4">
-              <label className="block text-xs text-zinc-500 mb-2">日</label>
-              <div className="grid grid-cols-7 gap-1">
+            <div style={{ marginBottom: "0.75rem" }}>
+              <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.5rem" }}>日</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "0.3rem" }}>
                 {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
                   <button
                     key={d}
                     type="button"
                     onClick={() => toggleDay(d)}
-                    className={`h-9 rounded text-xs transition-colors ${
-                      selectedDays.includes(d)
-                        ? "bg-zinc-900 text-white"
-                        : "border border-zinc-300 text-zinc-600 hover:bg-zinc-100"
-                    }`}
+                    style={{
+                      height: "2rem",
+                      borderRadius: "3px",
+                      fontSize: "0.7rem",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      border: `1px solid ${selectedDays.includes(d) ? "#00ffff" : "rgba(0,255,255,0.15)"}`,
+                      background: selectedDays.includes(d) ? "#00ffff" : "transparent",
+                      color: selectedDays.includes(d) ? "#0a0a0f" : "#4a5568",
+                    }}
                   >
                     {d}
                   </button>
@@ -294,17 +346,22 @@ function ReminderForm({
             </div>
           )}
 
-          {/* 時刻 (固定) */}
-          <div className="mb-6">
-            <label className="block text-xs text-zinc-500 mb-2">送信時刻</label>
-            <p className="text-sm text-zinc-900">15:00 (固定)</p>
+          <div style={{ marginBottom: "1.25rem" }}>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>送信時刻</label>
+            <p style={{ fontSize: "0.8rem", color: "#e2e8f0" }}>15:00 (固定)</p>
           </div>
 
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving} className="px-5 py-2 bg-zinc-900 text-white text-sm font-medium rounded hover:bg-zinc-800 transition-colors disabled:opacity-50">
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <button
+              type="submit"
+              disabled={saving}
+              style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.4rem 1.25rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", opacity: saving ? 0.5 : 1 }}
+            >
               {saving ? "保存中..." : isEdit ? "更新" : "作成"}
             </button>
-            <button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-zinc-500 hover:text-zinc-700">キャンセル</button>
+            <button type="button" onClick={onCancel} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
+              キャンセル
+            </button>
           </div>
         </form>
       </div>
