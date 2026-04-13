@@ -20,11 +20,10 @@ type Reminder = {
 const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
 
 function describeCron(cron: string): string {
-  const [min, hour, dom, , dow] = cron.split(" ");
-  const time = `${hour.padStart(2, "0")}:${min.padStart(2, "0")}`;
-  if (dom !== "*" && dow === "*") return `毎月${dom.split(",").join("・")}日 ${time}`;
-  if (dow !== "*" && dom === "*") return `毎週${dow.split(",").map((d) => DAY_NAMES[parseInt(d)] || d).join("・")}曜 ${time}`;
-  if (dom === "*" && dow === "*") return `毎日 ${time}`;
+  const [, , dom, , dow] = cron.split(" ");
+  if (dom !== "*" && dow === "*") return `毎月${dom.split(",").join("・")}日 15:00`;
+  if (dow !== "*" && dom === "*") return `毎週${dow.split(",").map((d) => DAY_NAMES[parseInt(d)] || d).join("・")}曜 15:00`;
+  if (dom === "*" && dow === "*") return `毎日 15:00`;
   return cron;
 }
 
@@ -155,14 +154,12 @@ function ReminderForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const parsed = target ? parseCron(target.cronExpression) : { type: "monthly", days: [1], hour: 9, minute: 0 };
+  const parsed = target ? parseCron(target.cronExpression) : { type: "monthly", days: [1], hour: 15, minute: 0 };
   const [title, setTitle] = useState(target?.title ?? "");
   const [message, setMessage] = useState(target?.message ?? "");
   const [recipientId, setRecipientId] = useState(target?.recipientId ?? "");
   const [scheduleType, setScheduleType] = useState(parsed.type);
   const [selectedDays, setSelectedDays] = useState<number[]>(parsed.days);
-  const [hour, setHour] = useState(parsed.hour);
-  const [minute, setMinute] = useState(parsed.minute);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const isEdit = !!target;
@@ -180,7 +177,7 @@ function ReminderForm({
     }
     setSaving(true);
 
-    const cronExpression = buildCron(scheduleType, selectedDays, hour, minute);
+    const cronExpression = buildCron(scheduleType, selectedDays, 15, 0);
     const url = isEdit ? `/api/v1/reminders/${target.id}` : "/api/v1/reminders";
     const method = isEdit ? "PATCH" : "POST";
 
@@ -297,30 +294,10 @@ function ReminderForm({
             </div>
           )}
 
-          {/* 時刻 */}
+          {/* 時刻 (固定) */}
           <div className="mb-6">
-            <label className="block text-xs text-zinc-500 mb-2">時刻</label>
-            <div className="flex gap-2 items-center">
-              <select
-                className={inputClass + " !w-20"}
-                value={hour}
-                onChange={(e) => setHour(parseInt(e.target.value))}
-              >
-                {Array.from({ length: 24 }, (_, i) => (
-                  <option key={i} value={i}>{String(i).padStart(2, "0")}</option>
-                ))}
-              </select>
-              <span className="text-zinc-500">:</span>
-              <select
-                className={inputClass + " !w-20"}
-                value={minute}
-                onChange={(e) => setMinute(parseInt(e.target.value))}
-              >
-                {[0, 15, 30, 45].map((m) => (
-                  <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
-                ))}
-              </select>
-            </div>
+            <label className="block text-xs text-zinc-500 mb-2">送信時刻</label>
+            <p className="text-sm text-zinc-900">15:00 (固定)</p>
           </div>
 
           <div className="flex gap-3">
