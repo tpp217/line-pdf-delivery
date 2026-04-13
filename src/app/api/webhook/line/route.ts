@@ -2,30 +2,40 @@ import { supabase } from '@/lib/supabase'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 
+function verifySignature(body: string, signature: string | null, secret: string | undefined): boolean {
+  if (!secret || !signature) return false
+  const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64')
+  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature))
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text()
   const signature = request.headers.get('x-line-signature')
   const secret = process.env.LINE_CHANNEL_SECRET
 
-  if (secret && signature) {
-    const hash = crypto
-      .createHmac('SHA256', secret)
-      .update(body)
-      .digest('base64')
-    if (hash !== signature) {
-      return Response.json({ error: 'Invalid signature' }, { status: 403 })
-    }
+  if (!verifySignature(body, signature, secret)) {
+    console.error('[webhook] Invalid signature')
+    return Response.json({ error: 'Invalid signature' }, { status: 400 })
   }
 
-  const payload = JSON.parse(body)
+  let payload
+  try {
+    payload = JSON.parse(body)
+  } catch {
+    return Response.json({ ok: true })
+  }
+
   const events = payload.events || []
+  if (events.length === 0) {
+    return Response.json({ ok: true })
+  }
+
+  const token = process.env.LINE_CHANNEL_ACCESS_TOKEN
+  if (!token) return Response.json({ ok: true })
 
   for (const event of events) {
     const userId = event.source?.userId
     if (!userId) continue
-
-    const token = process.env.LINE_CHANNEL_ACCESS_TOKEN
-    if (!token) continue
 
     const profileRes = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -43,6 +53,8 @@ export async function POST(request: NextRequest) {
         { lineUserId: userId, displayName, isActive: true },
         { onConflict: 'lineUserId' },
       )
+
+    console.log(`[webhook] Registered: ${displayName} (${userId})`)
   }
 
   return Response.json({ ok: true })
