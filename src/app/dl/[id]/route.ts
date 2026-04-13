@@ -17,15 +17,22 @@ export async function GET(_req: NextRequest, ctx: Context) {
     return new Response('Not Found', { status: 404 })
   }
 
-  const { data } = await supabase.storage
+  const { data: fileData, error } = await supabase.storage
     .from(pdf.storageBucket)
-    .createSignedUrl(pdf.storagePath, 60 * 60 * 72, {
-      download: pdf.originalFileName,
-    })
+    .download(pdf.storagePath)
 
-  if (!data?.signedUrl) {
-    return new Response('URL生成失敗', { status: 500 })
+  if (error || !fileData) {
+    return new Response('ダウンロード失敗', { status: 500 })
   }
 
-  return Response.redirect(data.signedUrl, 302)
+  const buffer = await fileData.arrayBuffer()
+  const encodedName = encodeURIComponent(pdf.originalFileName)
+
+  return new Response(buffer, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${encodedName}"; filename*=UTF-8''${encodedName}`,
+      'Content-Length': buffer.byteLength.toString(),
+    },
+  })
 }
