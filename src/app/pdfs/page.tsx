@@ -398,35 +398,90 @@ export default function PdfsPage() {
 
       {/* LINE 送信モーダル */}
       {showSendModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={() => setShowSendModal(false)}>
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-96" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold mb-1">LINE 送信先を選択</h3>
-            <p className="text-xs text-zinc-500 mb-4">{selected.size}件のPDFを送信します</p>
-            {recipients.length === 0 ? (
-              <p className="text-xs text-zinc-500">有効な送信先がありません。先に送信先を登録してください。</p>
-            ) : (
-              <div className="space-y-2 mb-4">
-                {recipients.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => {
-                      if (confirm(`「${r.displayName}」に ${selected.size}件を LINE 送信しますか？`)) {
-                        handleSend(r.id);
-                      }
-                    }}
-                    disabled={sending}
-                    className="w-full text-left px-4 py-3 border border-zinc-700 rounded hover:bg-zinc-800 transition-colors disabled:opacity-50"
-                  >
-                    <div className="text-sm font-medium">{r.displayName}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-            {sending && <p className="text-xs text-zinc-400">送信中...</p>}
-            <button onClick={() => setShowSendModal(false)} className="text-sm text-zinc-400 hover:text-zinc-200">閉じる</button>
-          </div>
-        </div>
+        <SendModal
+          selected={selected}
+          recipients={recipients}
+          sending={sending}
+          onSend={handleSend}
+          onClose={() => setShowSendModal(false)}
+        />
       )}
     </main>
+  );
+}
+
+function SendModal({
+  selected,
+  recipients,
+  sending,
+  onSend,
+  onClose,
+}: {
+  selected: Set<string>;
+  recipients: Recipient[];
+  sending: boolean;
+  onSend: (recipientId: string) => void;
+  onClose: () => void;
+}) {
+  const [chosenId, setChosenId] = useState<string>("");
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-96" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold mb-4">LINE 送信</h3>
+
+        <div className="mb-4">
+          <p className="text-xs text-zinc-400 mb-2">送信するPDF: {selected.size}件</p>
+        </div>
+
+        <div className="mb-4">
+          <label className="block text-xs text-zinc-400 mb-2">送信先を選択</label>
+          {recipients.length === 0 ? (
+            <p className="text-xs text-zinc-500">有効な送信先がありません。Bot にメッセージを送ってもらうと自動登録されます。</p>
+          ) : (
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {recipients.map((r) => (
+                <label
+                  key={r.id}
+                  className={`flex items-center gap-3 px-3 py-2.5 border rounded cursor-pointer transition-colors ${
+                    chosenId === r.id
+                      ? "border-emerald-500 bg-emerald-900/20"
+                      : "border-zinc-700 hover:bg-zinc-800"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="recipient"
+                    checked={chosenId === r.id}
+                    onChange={() => setChosenId(r.id)}
+                    className="text-emerald-500"
+                  />
+                  <span className="text-sm">{r.displayName}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => {
+              if (!chosenId) { alert("送信先を選択してください"); return; }
+              const name = recipients.find((r) => r.id === chosenId)?.displayName;
+              if (confirm(`「${name}」に ${selected.size}件を LINE 送信しますか？`)) {
+                onSend(chosenId);
+              }
+            }}
+            disabled={sending || !chosenId}
+            className="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded hover:bg-emerald-500 transition-colors disabled:opacity-50"
+          >
+            {sending ? "送信中..." : "送信"}
+          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200">
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

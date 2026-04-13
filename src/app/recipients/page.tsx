@@ -31,9 +31,19 @@ export default function RecipientsPage() {
     fetchRecipients();
   }, [fetchRecipients]);
 
-  const handleDelete = async (id: string, name: string) => {
+  const handleDeactivate = async (id: string, name: string) => {
     if (!confirm(`「${name}」を無効化しますか？`)) return;
     await fetch(`/api/v1/recipients/${id}`, { method: "DELETE" });
+    fetchRecipients();
+  };
+
+  const handleRemove = async (id: string, name: string) => {
+    if (!confirm(`「${name}」を完全に削除しますか？ この操作は取り消せません。`)) return;
+    await fetch(`/api/v1/recipients/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ _delete: true }),
+    });
     fetchRecipients();
   };
 
@@ -128,11 +138,19 @@ export default function RecipientsPage() {
                     >
                       編集
                     </button>
+                    {r.isActive ? (
+                      <button
+                        onClick={() => handleDeactivate(r.id, r.displayName)}
+                        className="text-xs text-zinc-500 hover:text-yellow-400"
+                      >
+                        無効化
+                      </button>
+                    ) : null}
                     <button
-                      onClick={() => handleDelete(r.id, r.displayName)}
+                      onClick={() => handleRemove(r.id, r.displayName)}
                       className="text-xs text-zinc-500 hover:text-red-400"
                     >
-                      無効化
+                      削除
                     </button>
                   </td>
                 </tr>

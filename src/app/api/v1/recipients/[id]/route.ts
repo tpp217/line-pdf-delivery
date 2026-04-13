@@ -19,8 +19,14 @@ export async function GET(_req: NextRequest, ctx: Context) {
 export async function PATCH(request: NextRequest, ctx: Context) {
   const { id } = await ctx.params
   const body = await request.json()
-  const { displayName, memo, isActive, isDefault } = body
 
+  if (body._delete) {
+    const { error } = await supabase.from('recipients').delete().eq('id', id)
+    if (error) return Response.json({ error: error.message }, { status: 500 })
+    return new Response(null, { status: 204 })
+  }
+
+  const { displayName, memo, isActive, isDefault } = body
   const updates: Record<string, unknown> = {}
   if (displayName !== undefined) updates.displayName = displayName
   if (memo !== undefined) updates.memo = memo
