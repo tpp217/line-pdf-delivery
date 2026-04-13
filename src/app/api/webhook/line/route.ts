@@ -41,6 +41,72 @@ export async function POST(request: NextRequest) {
   if (!token) return Response.json({ ok: true })
 
   for (const event of events) {
+    // グループ参加イベント
+    if (event.type === 'join' && event.source?.type === 'group') {
+      const groupId = event.source.groupId
+      if (!groupId) continue
+
+      const { data: existing } = await supabase
+        .from('recipients')
+        .select('id')
+        .eq('lineUserId', groupId)
+        .maybeSingle()
+
+      if (existing) {
+        await supabase.from('recipients').update({ isActive: true }).eq('id', existing.id)
+        console.log(`[webhook] Group activated: ${groupId}`)
+        continue
+      }
+
+      const summaryRes = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      let groupName = 'グループ'
+      if (summaryRes.ok) {
+        const summary = await summaryRes.json()
+        groupName = summary.groupName || groupName
+      }
+
+      await supabase.from('recipients').insert({
+        lineUserId: groupId,
+        displayName: groupName,
+        isActive: true,
+        type: 'group',
+      })
+      console.log(`[webhook] Group registered: ${groupName} (${groupId})`)
+      continue
+    }
+
+    // グループ内メッセージ → グループを登録
+    if (event.source?.type === 'group' && event.source?.groupId) {
+      const groupId = event.source.groupId
+
+      const { data: existing } = await supabase
+        .from('recipients')
+        .select('id')
+        .eq('lineUserId', groupId)
+        .maybeSingle()
+
+      if (!existing) {
+        const summaryRes = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        let groupName = 'グループ'
+        if (summaryRes.ok) {
+          const summary = await summaryRes.json()
+          groupName = summary.groupName || groupName
+        }
+        await supabase.from('recipients').insert({
+          lineUserId: groupId,
+          displayName: groupName,
+          isActive: true,
+          type: 'group',
+        })
+        console.log(`[webhook] Group registered via message: ${groupName} (${groupId})`)
+      }
+    }
+
+    // 個人ユーザー
     const userId = event.source?.userId
     if (!userId) continue
 
@@ -71,7 +137,7 @@ export async function POST(request: NextRequest) {
 
     await supabase
       .from('recipients')
-      .insert({ lineUserId: userId, displayName, isActive: true })
+      .insert({ lineUserId: userId, displayName, isActive: true, type: 'user' })
 
     console.log(`[webhook] New registered: ${displayName} (${userId})`)
   }

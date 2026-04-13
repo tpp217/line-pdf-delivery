@@ -457,6 +457,9 @@ function SendModal({
                     className="text-emerald-500"
                   />
                   <span className="text-sm text-zinc-900">{r.displayName}</span>
+                  {(r as Record<string, unknown>).type === 'group' && (
+                    <span className="ml-2 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded">グループ</span>
+                  )}
                 </label>
               ))}
             </div>

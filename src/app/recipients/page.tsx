@@ -94,7 +94,8 @@ export default function RecipientsPage() {
             <thead className="bg-zinc-900 text-zinc-400 text-xs">
               <tr>
                 <th className="text-left p-3">表示名</th>
-                <th className="text-left p-3">LINE User ID</th>
+                <th className="text-center p-3">種別</th>
+                <th className="text-left p-3">LINE ID</th>
                 <th className="text-left p-3">メモ</th>
                 <th className="text-center p-3">状態</th>
                 <th className="text-right p-3">操作</th>
@@ -111,7 +112,14 @@ export default function RecipientsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-3 font-mono text-xs text-zinc-400">
+                  <td className="p-3 text-center">
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      (r as Record<string, unknown>).type === 'group' ? 'bg-blue-900/50 text-blue-400' : 'bg-zinc-800 text-zinc-400'
+                    }`}>
+                      {(r as Record<string, unknown>).type === 'group' ? 'グループ' : '個人'}
+                    </span>
+                  </td>
+                  <td className="p-3 font-mono text-xs text-zinc-400 max-w-32 truncate">
                     {r.lineUserId}
                   </td>
                   <td className="p-3 text-zinc-500 text-xs max-w-48 truncate">
