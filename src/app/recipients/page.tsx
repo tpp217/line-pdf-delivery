@@ -175,19 +175,24 @@ function RecipientForm({
       ? { displayName, memo: memo || null, isDefault }
       : { displayName, lineUserId, memo: memo || null, isDefault };
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.error || "保存に失敗しました");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "保存に失敗しました");
+        setSaving(false);
+        return;
+      }
+      onDone();
+    } catch (err) {
+      setError(`通信エラー: ${err instanceof Error ? err.message : "不明"}`);
       setSaving(false);
-      return;
     }
-    onDone();
   };
 
   const inputStyle: React.CSSProperties = {

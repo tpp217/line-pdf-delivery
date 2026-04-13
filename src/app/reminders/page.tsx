@@ -194,18 +194,24 @@ function ReminderForm({
     const url = isEdit ? `/lpd/api/v1/reminders/${target.id}` : "/lpd/api/v1/reminders";
     const method = isEdit ? "PATCH" : "POST";
 
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, message, recipientId, cronExpression }),
-    });
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, message, recipientId, cronExpression }),
+      });
 
-    if (!res.ok) {
-      setError((await res.json()).error || "保存失敗");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "保存失敗");
+        setSaving(false);
+        return;
+      }
+      onDone();
+    } catch (err) {
+      setError(`通信エラー: ${err instanceof Error ? err.message : "不明"}`);
       setSaving(false);
-      return;
     }
-    onDone();
   };
 
   const inputStyle: React.CSSProperties = {
