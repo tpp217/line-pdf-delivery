@@ -34,23 +34,13 @@ export async function POST(request: NextRequest) {
   const results: { fileName: string; ok: boolean; error?: string }[] = []
 
   for (const pdf of pdfs) {
-    const { data: viewUrl } = await supabase.storage
-      .from(pdf.storageBucket)
-      .createSignedUrl(pdf.storagePath, 60 * 60 * 72)
-
-    const { data: dlUrl } = await supabase.storage
-      .from(pdf.storageBucket)
-      .createSignedUrl(pdf.storagePath, 60 * 60 * 72, {
-        download: pdf.originalFileName,
-      })
-
-    if (!viewUrl?.signedUrl) {
-      results.push({ fileName: pdf.originalFileName, ok: false, error: '署名付きURL生成失敗' })
-      continue
-    }
+    const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : request.nextUrl.origin
+    const dlLink = `${baseUrl}/dl/${pdf.id}`
 
     const name = pdf.personName || pdf.originalFileName
-    const text = `${name} の給与明細です（72時間有効）。\n\n▼ 閲覧\n${viewUrl.signedUrl}\n\n▼ ダウンロード\n${dlUrl?.signedUrl || viewUrl.signedUrl}`
+    const text = `${name} の給与明細です。\n${dlLink}`
 
     const res = await pushMessage(recipient.lineUserId, [{ type: 'text', text }])
     results.push({ fileName: pdf.originalFileName, ok: res.ok, error: res.error })
