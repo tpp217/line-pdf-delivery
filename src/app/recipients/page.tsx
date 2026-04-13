@@ -13,6 +13,27 @@ type Recipient = {
   createdAt: string;
 };
 
+const S = {
+  page: { background: "#0a0a0f", minHeight: "100vh", color: "#e2e8f0", fontFamily: "'JetBrains Mono','Courier New',monospace", padding: "1.5rem" } as React.CSSProperties,
+  wrap: { maxWidth: "900px", margin: "0 auto" } as React.CSSProperties,
+  backLink: { color: "#4a5568", fontSize: "0.7rem", textDecoration: "none" } as React.CSSProperties,
+  heading: { fontSize: "1.2rem", fontWeight: "bold", color: "#e2e8f0", marginTop: "0.25rem", letterSpacing: "0.05em" } as React.CSSProperties,
+  btnCyan: { background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", letterSpacing: "0.05em" } as React.CSSProperties,
+  btnGhost: { background: "transparent", border: "1px solid #4a5568", color: "#4a5568", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" } as React.CSSProperties,
+  btnText: { background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.2rem 0.4rem" } as React.CSSProperties,
+  btnDanger: { background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.2rem 0.4rem" } as React.CSSProperties,
+  table: { width: "100%", borderCollapse: "collapse" as const, fontSize: "0.8rem" },
+  th: { background: "#111827", color: "#00ffff", fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase" as const, padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", textAlign: "left" as const },
+  td: { padding: "0.6rem 0.75rem", color: "#e2e8f0", borderBottom: "1px solid rgba(0,255,255,0.07)" },
+  tdMuted: { padding: "0.6rem 0.75rem", color: "#4a5568", borderBottom: "1px solid rgba(0,255,255,0.07)", fontSize: "0.75rem" },
+  badgeCyan: { border: "1px solid #00ffff", color: "#00ffff", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,255,0.06)", marginLeft: "0.4rem" } as React.CSSProperties,
+  badgeGreen: { border: "1px solid #00ff41", color: "#00ff41", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,65,0.06)" } as React.CSSProperties,
+  badgeMuted: { border: "1px solid #4a5568", color: "#4a5568", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "transparent" } as React.CSSProperties,
+  badgeBlue: { border: "1px solid #60a5fa", color: "#60a5fa", fontSize: "0.65rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(96,165,250,0.06)" } as React.CSSProperties,
+  tableWrap: { border: "1px solid rgba(0,255,255,0.15)", borderRadius: "6px", overflow: "hidden" } as React.CSSProperties,
+  emptyText: { color: "#4a5568", fontSize: "0.8rem" } as React.CSSProperties,
+};
+
 export default function RecipientsPage() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,126 +69,84 @@ export default function RecipientsPage() {
   };
 
   return (
-    <main className="flex-1 flex flex-col p-6 max-w-4xl mx-auto w-full">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <Link href="/" className="text-zinc-500 text-xs hover:text-zinc-300">
-            ← ホーム
-          </Link>
-          <h1 className="text-xl font-bold mt-1">送信先管理</h1>
+    <div style={S.page}>
+      <div style={S.wrap}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
+          <div>
+            <Link href="/" style={S.backLink}>← ホーム</Link>
+            <h1 style={S.heading}>送信先管理</h1>
+          </div>
+          <button
+            onClick={() => { setEditTarget(null); setShowForm(true); }}
+            style={S.btnCyan}
+          >
+            + 新規登録
+          </button>
         </div>
-        <button
-          onClick={() => {
-            setEditTarget(null);
-            setShowForm(true);
-          }}
-          className="px-4 py-2 bg-zinc-100 text-zinc-900 text-sm font-medium rounded hover:bg-white transition-colors"
-        >
-          + 新規登録
-        </button>
-      </div>
 
-      {showForm && (
-        <RecipientForm
-          target={editTarget}
-          onDone={() => {
-            setShowForm(false);
-            setEditTarget(null);
-            fetchRecipients();
-          }}
-          onCancel={() => {
-            setShowForm(false);
-            setEditTarget(null);
-          }}
-        />
-      )}
+        {showForm && (
+          <RecipientForm
+            target={editTarget}
+            onDone={() => { setShowForm(false); setEditTarget(null); fetchRecipients(); }}
+            onCancel={() => { setShowForm(false); setEditTarget(null); }}
+          />
+        )}
 
-      {loading ? (
-        <p className="text-zinc-500 text-sm">読み込み中...</p>
-      ) : recipients.length === 0 ? (
-        <p className="text-zinc-500 text-sm">
-          送信先が登録されていません。「新規登録」から追加してください。
-        </p>
-      ) : (
-        <div className="border border-zinc-800 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-900 text-zinc-400 text-xs">
-              <tr>
-                <th className="text-left p-3">表示名</th>
-                <th className="text-center p-3">種別</th>
-                <th className="text-left p-3">LINE ID</th>
-                <th className="text-left p-3">メモ</th>
-                <th className="text-center p-3">状態</th>
-                <th className="text-right p-3">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-800">
-              {recipients.map((r) => (
-                <tr key={r.id} className="hover:bg-zinc-900/50">
-                  <td className="p-3 font-medium">
-                    {r.displayName}
-                    {r.isDefault && (
-                      <span className="ml-2 text-xs bg-zinc-700 text-zinc-300 px-1.5 py-0.5 rounded">
-                        デフォルト
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-3 text-center">
-                    <span className={`text-xs px-1.5 py-0.5 rounded ${
-                      (r as Record<string, unknown>).type === 'group' ? 'bg-blue-900/50 text-blue-400' : 'bg-zinc-800 text-zinc-400'
-                    }`}>
-                      {(r as Record<string, unknown>).type === 'group' ? 'グループ' : '個人'}
-                    </span>
-                  </td>
-                  <td className="p-3 font-mono text-xs text-zinc-400 max-w-32 truncate">
-                    {r.lineUserId}
-                  </td>
-                  <td className="p-3 text-zinc-500 text-xs max-w-48 truncate">
-                    {r.memo || "-"}
-                  </td>
-                  <td className="p-3 text-center">
-                    <span
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        r.isActive
-                          ? "bg-emerald-900/50 text-emerald-400"
-                          : "bg-zinc-800 text-zinc-500"
-                      }`}
-                    >
-                      {r.isActive ? "有効" : "無効"}
-                    </span>
-                  </td>
-                  <td className="p-3 text-right space-x-2">
-                    <button
-                      onClick={() => {
-                        setEditTarget(r);
-                        setShowForm(true);
-                      }}
-                      className="text-xs text-zinc-400 hover:text-zinc-100"
-                    >
-                      編集
-                    </button>
-                    {r.isActive ? (
-                      <button
-                        onClick={() => handleDeactivate(r.id, r.displayName)}
-                        className="text-xs text-zinc-500 hover:text-yellow-400"
-                      >
-                        無効化
-                      </button>
-                    ) : null}
-                    <button
-                      onClick={() => handleRemove(r.id, r.displayName)}
-                      className="text-xs text-zinc-500 hover:text-red-400"
-                    >
-                      削除
-                    </button>
-                  </td>
+        {loading ? (
+          <p style={S.emptyText}>読み込み中...</p>
+        ) : recipients.length === 0 ? (
+          <p style={S.emptyText}>送信先が登録されていません。「新規登録」から追加してください。</p>
+        ) : (
+          <div style={S.tableWrap}>
+            <table style={S.table}>
+              <thead>
+                <tr>
+                  <th style={S.th}>表示名</th>
+                  <th style={{ ...S.th, textAlign: "center" }}>種別</th>
+                  <th style={S.th}>LINE ID</th>
+                  <th style={S.th}>メモ</th>
+                  <th style={{ ...S.th, textAlign: "center" }}>状態</th>
+                  <th style={{ ...S.th, textAlign: "right" }}>操作</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </main>
+              </thead>
+              <tbody>
+                {recipients.map((r) => (
+                  <tr key={r.id}>
+                    <td style={S.td}>
+                      {r.displayName}
+                      {r.isDefault && <span style={S.badgeCyan}>デフォルト</span>}
+                    </td>
+                    <td style={{ ...S.td, textAlign: "center" }}>
+                      <span style={(r as Record<string, unknown>).type === "group" ? S.badgeBlue : S.badgeMuted}>
+                        {(r as Record<string, unknown>).type === "group" ? "グループ" : "個人"}
+                      </span>
+                    </td>
+                    <td style={{ ...S.tdMuted, fontFamily: "monospace", maxWidth: "8rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.lineUserId}
+                    </td>
+                    <td style={{ ...S.tdMuted, maxWidth: "12rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {r.memo || "-"}
+                    </td>
+                    <td style={{ ...S.td, textAlign: "center" }}>
+                      <span style={r.isActive ? S.badgeGreen : S.badgeMuted}>
+                        {r.isActive ? "有効" : "無効"}
+                      </span>
+                    </td>
+                    <td style={{ ...S.td, textAlign: "right" }}>
+                      <button onClick={() => { setEditTarget(r); setShowForm(true); }} style={S.btnText}>編集</button>
+                      {r.isActive && (
+                        <button onClick={() => handleDeactivate(r.id, r.displayName)} style={{ ...S.btnText, color: "#f59e0b" }}>無効化</button>
+                      )}
+                      <button onClick={() => handleRemove(r.id, r.displayName)} style={{ ...S.btnDanger, color: "#ef4444" }}>削除</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -193,9 +172,7 @@ function RecipientForm({
     setError("");
     setSaving(true);
 
-    const url = isEdit
-      ? `/api/v1/recipients/${target.id}`
-      : "/api/v1/recipients";
+    const url = isEdit ? `/api/v1/recipients/${target.id}` : "/api/v1/recipients";
     const method = isEdit ? "PATCH" : "POST";
     const body = isEdit
       ? { displayName, memo: memo || null, isDefault }
@@ -213,100 +190,73 @@ function RecipientForm({
       setSaving(false);
       return;
     }
-
     onDone();
   };
 
-  const inputClass =
-    "w-full bg-zinc-900 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500";
+  const inputStyle: React.CSSProperties = {
+    background: "#111827",
+    border: "1px solid rgba(0,255,255,0.2)",
+    color: "#e2e8f0",
+    borderRadius: "4px",
+    padding: "0.45rem 0.75rem",
+    fontSize: "0.8rem",
+    width: "100%",
+    outline: "none",
+    fontFamily: "inherit",
+    boxSizing: "border-box",
+  };
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="border border-zinc-700 rounded-lg p-5 mb-6 bg-zinc-900/50"
-    >
-      <h2 className="text-sm font-semibold mb-4">
-        {isEdit ? "送信先の編集" : "新規送信先"}
-      </h2>
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
+      onClick={onCancel}>
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: "#0d1117", border: "1px solid #00ffff", boxShadow: "0 0 8px rgba(0,255,255,0.4)", borderRadius: "6px", padding: "1.5rem", width: "26rem", maxHeight: "90vh", overflowY: "auto", fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+      >
+        <h2 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "1.25rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>
+          {isEdit ? "送信先の編集" : "新規送信先"}
+        </h2>
 
-      {error && (
-        <p className="text-red-400 text-xs mb-3 bg-red-900/20 border border-red-900/50 rounded px-3 py-2">
-          {error}
-        </p>
-      )}
+        {error && (
+          <p style={{ color: "#f87171", fontSize: "0.75rem", marginBottom: "0.75rem", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "4px", padding: "0.4rem 0.75rem" }}>
+            {error}
+          </p>
+        )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label className="block text-xs text-zinc-400 mb-1">表示名 *</label>
-          <input
-            type="text"
-            className={inputClass}
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="例: 山田太郎"
-            required
-          />
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "0.75rem" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>表示名 *</label>
+            <input type="text" style={inputStyle} value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="山田太郎" required />
+          </div>
+          <div>
+            <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>LINE User ID *</label>
+            <input type="text" style={{ ...inputStyle, opacity: isEdit ? 0.5 : 1 }} value={lineUserId} onChange={(e) => setLineUserId(e.target.value)} placeholder="U1234567890..." required disabled={isEdit} />
+            {isEdit && <p style={{ fontSize: "0.65rem", color: "#4a5568", marginTop: "0.25rem" }}>変更不可</p>}
+          </div>
         </div>
-        <div>
-          <label className="block text-xs text-zinc-400 mb-1">
-            LINE User ID *
+
+        <div style={{ marginBottom: "0.75rem" }}>
+          <label style={{ display: "block", fontSize: "0.7rem", color: "#4a5568", marginBottom: "0.3rem" }}>メモ</label>
+          <input type="text" style={inputStyle} value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="任意のメモ" />
+        </div>
+
+        <div style={{ marginBottom: "1.25rem" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.8rem", color: "#e2e8f0", cursor: "pointer" }}>
+            <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} />
+            デフォルト送信先に設定
           </label>
-          <input
-            type="text"
-            className={inputClass}
-            value={lineUserId}
-            onChange={(e) => setLineUserId(e.target.value)}
-            placeholder="例: U1234567890abcdef..."
-            required
-            disabled={isEdit}
-          />
-          {isEdit && (
-            <p className="text-xs text-zinc-600 mt-1">
-              LINE User ID は変更できません
-            </p>
-          )}
         </div>
-      </div>
 
-      <div className="mb-4">
-        <label className="block text-xs text-zinc-400 mb-1">メモ</label>
-        <input
-          type="text"
-          className={inputClass}
-          value={memo}
-          onChange={(e) => setMemo(e.target.value)}
-          placeholder="任意のメモ"
-        />
-      </div>
-
-      <div className="mb-5">
-        <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isDefault}
-            onChange={(e) => setIsDefault(e.target.checked)}
-            className="rounded border-zinc-600"
-          />
-          デフォルト送信先に設定
-        </label>
-      </div>
-
-      <div className="flex gap-3">
-        <button
-          type="submit"
-          disabled={saving}
-          className="px-4 py-2 bg-zinc-100 text-zinc-900 text-sm font-medium rounded hover:bg-white transition-colors disabled:opacity-50"
-        >
-          {saving ? "保存中..." : isEdit ? "更新" : "登録"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-        >
-          キャンセル
-        </button>
-      </div>
-    </form>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <button type="submit" disabled={saving} style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.4rem 1.25rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", opacity: saving ? 0.5 : 1 }}>
+            {saving ? "保存中..." : isEdit ? "更新" : "登録"}
+          </button>
+          <button type="button" onClick={onCancel} style={{ background: "none", border: "none", color: "#4a5568", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
+            キャンセル
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
