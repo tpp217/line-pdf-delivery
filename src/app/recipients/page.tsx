@@ -42,7 +42,7 @@ export default function RecipientsPage() {
 
   const fetchRecipients = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/v1/recipients");
+    const res = await fetch("/lpd/api/v1/recipients");
     const data = await res.json();
     setRecipients(data);
     setLoading(false);

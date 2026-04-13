@@ -42,8 +42,8 @@ export default function RemindersPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [rRes, rcRes] = await Promise.all([
-      fetch("/api/v1/reminders"),
-      fetch("/api/v1/recipients?isActive=true"),
+      fetch("/lpd/api/v1/reminders"),
+      fetch("/lpd/api/v1/recipients?isActive=true"),
     ]);
     setReminders(await rRes.json());
     setRecipients(await rcRes.json());

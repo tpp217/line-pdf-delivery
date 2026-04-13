@@ -62,9 +62,9 @@ export default function PdfsPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [pRes, persRes, rRes] = await Promise.all([
-      fetch("/api/v1/pdfs?page=1&pageSize=1000"),
-      fetch("/api/v1/persons"),
-      fetch("/api/v1/recipients?isActive=true"),
+      fetch("/lpd/api/v1/pdfs?page=1&pageSize=1000"),
+      fetch("/lpd/api/v1/persons"),
+      fetch("/lpd/api/v1/recipients?isActive=true"),
     ]);
     const pData = await pRes.json();
     setAllPdfs(pData.items || []);
@@ -142,7 +142,7 @@ export default function PdfsPage() {
     for (const file of files) formData.append("files", file);
     formData.append("sourceFolderName", folderName || "ブラウザアップロード");
     try {
-      const res = await fetch("/api/v1/uploads/folder", { method: "POST", body: formData });
+      const res = await fetch("/lpd/api/v1/uploads/folder", { method: "POST", body: formData });
       if (res.ok) {
         const r = await res.json();
         alert(`${r.acceptedFiles}件のPDFを登録しました`);
@@ -176,7 +176,7 @@ export default function PdfsPage() {
   const handleBulkDelete = async (ids: string[], label: string) => {
     if (!confirm(`${label} (${ids.length}件) を削除しますか？`)) return;
     setDeleting(true);
-    await fetch("/api/v1/pdfs/bulk-delete", {
+    await fetch("/lpd/api/v1/pdfs/bulk-delete", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ids }),
     });
@@ -188,7 +188,7 @@ export default function PdfsPage() {
   // LINE 送信
   const handleSend = async (recipientId: string) => {
     setSending(true);
-    const res = await fetch("/api/v1/pdfs/send", {
+    const res = await fetch("/lpd/api/v1/pdfs/send", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ pdfIds: Array.from(selected), recipientId }),
     });
