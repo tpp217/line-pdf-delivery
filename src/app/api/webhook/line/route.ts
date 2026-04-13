@@ -4,8 +4,15 @@ import crypto from 'crypto'
 
 function verifySignature(body: string, signature: string | null, secret: string | undefined): boolean {
   if (!secret || !signature) return false
-  const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64')
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(signature))
+  try {
+    const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64')
+    const a = Buffer.from(hash)
+    const b = Buffer.from(signature)
+    if (a.length !== b.length) return false
+    return crypto.timingSafeEqual(a, b)
+  } catch {
+    return false
+  }
 }
 
 export async function POST(request: NextRequest) {
