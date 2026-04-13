@@ -426,18 +426,18 @@ function SendModal({
   const [chosenId, setChosenId] = useState<string>("");
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-96" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-sm font-semibold mb-4">LINE 送信</h3>
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-lg p-6 w-96 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-zinc-900 mb-4">LINE 送信</h3>
 
         <div className="mb-4">
-          <p className="text-xs text-zinc-400 mb-2">送信するPDF: {selected.size}件</p>
+          <p className="text-xs text-zinc-500 mb-2">送信するPDF: {selected.size}件</p>
         </div>
 
         <div className="mb-4">
-          <label className="block text-xs text-zinc-400 mb-2">送信先を選択</label>
+          <label className="block text-xs text-zinc-500 mb-2">送信先を選択</label>
           {recipients.length === 0 ? (
-            <p className="text-xs text-zinc-500">有効な送信先がありません。Bot にメッセージを送ってもらうと自動登録されます。</p>
+            <p className="text-xs text-zinc-400">有効な送信先がありません。Bot にメッセージを送ってもらうと自動登録されます。</p>
           ) : (
             <div className="space-y-1 max-h-48 overflow-y-auto">
               {recipients.map((r) => (
@@ -445,8 +445,8 @@ function SendModal({
                   key={r.id}
                   className={`flex items-center gap-3 px-3 py-2.5 border rounded cursor-pointer transition-colors ${
                     chosenId === r.id
-                      ? "border-emerald-500 bg-emerald-900/20"
-                      : "border-zinc-700 hover:bg-zinc-800"
+                      ? "border-emerald-500 bg-emerald-50"
+                      : "border-zinc-200 hover:bg-zinc-50"
                   }`}
                 >
                   <input
@@ -456,7 +456,7 @@ function SendModal({
                     onChange={() => setChosenId(r.id)}
                     className="text-emerald-500"
                   />
-                  <span className="text-sm">{r.displayName}</span>
+                  <span className="text-sm text-zinc-900">{r.displayName}</span>
                 </label>
               ))}
             </div>

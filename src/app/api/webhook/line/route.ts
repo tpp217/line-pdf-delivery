@@ -44,6 +44,21 @@ export async function POST(request: NextRequest) {
     const userId = event.source?.userId
     if (!userId) continue
 
+    const { data: existing } = await supabase
+      .from('recipients')
+      .select('id')
+      .eq('lineUserId', userId)
+      .maybeSingle()
+
+    if (existing) {
+      await supabase
+        .from('recipients')
+        .update({ isActive: true })
+        .eq('id', existing.id)
+      console.log(`[webhook] Already registered, activated: ${userId}`)
+      continue
+    }
+
     const profileRes = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
@@ -56,12 +71,9 @@ export async function POST(request: NextRequest) {
 
     await supabase
       .from('recipients')
-      .upsert(
-        { lineUserId: userId, displayName, isActive: true },
-        { onConflict: 'lineUserId' },
-      )
+      .insert({ lineUserId: userId, displayName, isActive: true })
 
-    console.log(`[webhook] Registered: ${displayName} (${userId})`)
+    console.log(`[webhook] New registered: ${displayName} (${userId})`)
   }
 
   return Response.json({ ok: true })
