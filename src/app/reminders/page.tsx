@@ -41,8 +41,8 @@ export default function RemindersPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [rRes, rcRes] = await Promise.all([
-      fetch("/lpd/api/v1/reminders"),
-      fetch("/lpd/api/v1/recipients?isActive=true"),
+      fetch("/api/v1/reminders"),
+      fetch("/api/v1/recipients?isActive=true"),
     ]);
     setReminders(await rRes.json());
     setRecipients(await rcRes.json());
@@ -52,7 +52,7 @@ export default function RemindersPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleToggle = async (r: Reminder) => {
-    await fetch(`/lpd/api/v1/reminders/${r.id}`, {
+    await fetch(`/api/v1/reminders/${r.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isActive: !r.isActive }),
@@ -62,7 +62,7 @@ export default function RemindersPage() {
 
   const handleDelete = async (r: Reminder) => {
     if (!confirm(`「${r.title}」を削除しますか？`)) return;
-    await fetch(`/lpd/api/v1/reminders/${r.id}`, { method: "DELETE" });
+    await fetch(`/api/v1/reminders/${r.id}`, { method: "DELETE" });
     fetchData();
   };
 
@@ -191,7 +191,7 @@ function ReminderForm({
     setSaving(true);
 
     const cronExpression = buildCron(scheduleType, selectedDays, 15, 0);
-    const url = isEdit ? `/lpd/api/v1/reminders/${target.id}` : "/lpd/api/v1/reminders";
+    const url = isEdit ? `/api/v1/reminders/${target.id}` : "/api/v1/reminders";
     const method = isEdit ? "PATCH" : "POST";
 
     try {

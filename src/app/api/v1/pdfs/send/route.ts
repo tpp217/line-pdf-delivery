@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : request.nextUrl.origin
     const shortCode = await getOrCreateShortCode(pdf.id)
-    const dlLink = `${baseUrl}/lpd/dl/${shortCode}`
+    const dlLink = `${baseUrl}/dl/${shortCode}`
 
     const name = pdf.personName || pdf.originalFileName
     const text = `${name} の給与明細です。\n${dlLink}`
