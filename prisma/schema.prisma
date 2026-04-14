@@ -63,6 +63,7 @@ model PdfDocument {
   companyNameManual    String?       @db.VarChar(255)
   personNameManual     String?       @db.VarChar(255)
   extractionConfidence Decimal?      @db.Decimal(5, 2)
+  shortCode            String?       @unique @db.VarChar(12) @map("short_code")
   uploadedAt           DateTime      @default(now())
   deletedAt            DateTime?
 

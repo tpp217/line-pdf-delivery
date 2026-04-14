@@ -6,10 +6,13 @@ type Context = { params: Promise<{ id: string }> }
 export async function GET(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params
 
+  // UUID形式なら id、それ以外は short_code で検索（後方互換）
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+
   const { data: pdf } = await supabase
     .from('pdf_documents')
     .select('storageBucket, storagePath, originalFileName')
-    .eq('id', id)
+    .eq(isUuid ? 'id' : 'short_code', id)
     .is('deletedAt', null)
     .maybeSingle()
 
