@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { pushMessage } from '@/lib/line'
+import { getOrCreateShortCode } from '@/lib/short-code'
 import { NextRequest } from 'next/server'
 
 export async function POST(request: NextRequest) {
@@ -37,7 +38,8 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : request.nextUrl.origin
-    const dlLink = `${baseUrl}/lpd/dl/${pdf.id}`
+    const shortCode = await getOrCreateShortCode(pdf.id)
+    const dlLink = `${baseUrl}/lpd/dl/${shortCode}`
 
     const name = pdf.personName || pdf.originalFileName
     const text = `${name} の給与明細です。\n${dlLink}`
