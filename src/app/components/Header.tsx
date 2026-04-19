@@ -13,8 +13,10 @@ const navItems = [
 export default function Header() {
   const pathname = usePathname();
   const [time, setTime] = useState("");
+  const [embedded, setEmbedded] = useState(false);
 
   useEffect(() => {
+    setEmbedded(window.self !== window.top);
     const update = () =>
       setTime(
         new Date()
@@ -49,16 +51,18 @@ export default function Header() {
     >
       {/* 左: システム名 + ナビ */}
       <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
-        <span
-          style={{
-            color: "#00ffff",
-            fontSize: "0.8rem",
-            letterSpacing: "0.15em",
-            fontWeight: 700,
-          }}
-        >
-          LPD
-        </span>
+        {!embedded && (
+          <span
+            style={{
+              color: "#00ffff",
+              fontSize: "0.8rem",
+              letterSpacing: "0.15em",
+              fontWeight: 700,
+            }}
+          >
+            LPD
+          </span>
+        )}
 
         <nav style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
           {navItems.map((item) => {
@@ -91,21 +95,23 @@ export default function Header() {
         </nav>
       </div>
 
-      {/* 右: 時刻・ステータス */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "1.5rem",
-          fontSize: "0.7rem",
-          color: "#718096",
-        }}
-      >
-        <span>
-          <span style={{ color: "#00ffff" }}>{time}</span>
-        </span>
-        <span style={{ color: "#00ff41" }}>● ONLINE</span>
-      </div>
+      {/* 右: 時刻・ステータス (iframe埋め込み時はHUBと重複するので非表示) */}
+      {!embedded && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "1.5rem",
+            fontSize: "0.7rem",
+            color: "#718096",
+          }}
+        >
+          <span>
+            <span style={{ color: "#00ffff" }}>{time}</span>
+          </span>
+          <span style={{ color: "#00ff41" }}>● ONLINE</span>
+        </div>
+      )}
     </header>
   );
 }
