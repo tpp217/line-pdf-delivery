@@ -75,21 +75,18 @@ export default function PdfsPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // カテゴリ一覧
   const allCategories = useMemo(() => {
     const s = new Set<string>();
     persons.forEach((p) => p.categories?.forEach((c) => s.add(c)));
     return Array.from(s).sort();
   }, [persons]);
 
-  // 人物 → カテゴリのマップ
   const personCatMap = useMemo(() => {
     const m = new Map<string, string[]>();
     persons.forEach((p) => m.set(p.id, p.categories || []));
     return m;
   }, [persons]);
 
-  // フィルタ
   const years = useMemo(() => {
     const s = new Set<string>();
     allPdfs.forEach((p) => s.add(toYear(p.uploadedAt)));
@@ -118,7 +115,6 @@ export default function PdfsPage() {
     return result;
   }, [yearPdfs, selectedMonth, selectedCategory, personCatMap]);
 
-  // 初回データ取得後、最新の年を自動選択
   useEffect(() => {
     if (!initialized && years.length > 0) {
       setSelectedYear(years[0]);
@@ -126,7 +122,6 @@ export default function PdfsPage() {
     }
   }, [initialized, years]);
 
-  // 年変更時に最新月を自動選択
   useEffect(() => {
     if (selectedYear && selectedYear !== "all" && months.length > 0) {
       setSelectedMonth(months[0]);
@@ -135,7 +130,6 @@ export default function PdfsPage() {
 
   useEffect(() => { setSelected(new Set()); }, [selectedYear, selectedMonth, selectedCategory]);
 
-  // カテゴリ選択で一括チェック
   const handleCategorySelect = (cat: string) => {
     setSelectedCategory(cat);
     if (cat === "all") {
@@ -148,7 +142,6 @@ export default function PdfsPage() {
     }
   };
 
-  // アップロード
   const uploadFiles = useCallback(async (files: File[], folderName?: string) => {
     if (files.length === 0) return;
     setUploading(true);
@@ -186,7 +179,6 @@ export default function PdfsPage() {
     uploadFiles(allFiles, entries.find((e) => e.isDirectory)?.name);
   };
 
-  // 削除
   const handleBulkDelete = async (ids: string[], label: string) => {
     if (!confirm(`${label} (${ids.length}件) を削除しますか？`)) return;
     setDeleting(true);
@@ -199,7 +191,6 @@ export default function PdfsPage() {
     setDeleting(false);
   };
 
-  // LINE 送信
   const handleSend = async (recipientId: string) => {
     setSending(true);
     const res = await fetch("/api/v1/pdfs/send", {
@@ -216,7 +207,6 @@ export default function PdfsPage() {
     setShowSendModal(false);
   };
 
-  // カテゴリ編集
   const handleSaveCategories = async () => {
     if (!editingPerson) return;
     const cats = catInput.split(/[,、\s]+/).map((s) => s.trim()).filter(Boolean);
@@ -236,137 +226,158 @@ export default function PdfsPage() {
     setSelected(selected.size === filteredPdfs.length ? new Set() : new Set(filteredPdfs.map((p) => p.id)));
   };
 
-  const formatSize = (b: number) => b < 1024 ? `${b}B` : b < 1048576 ? `${(b / 1024).toFixed(0)}KB` : `${(b / 1048576).toFixed(1)}MB`;
+  const formatSize = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1048576).toFixed(1)} MB`;
 
   const getPersonForPdf = (pdf: PdfDocument) => persons.find((p) => p.id === pdf.personId);
 
-  const tabStyle = (active: boolean): React.CSSProperties => ({
-    padding: "0.3rem 0.7rem",
-    fontSize: "0.75rem",
-    borderRadius: "4px",
-    border: `1px solid ${active ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-    background: active ? "#00ffff" : "transparent",
-    color: active ? "#0a0a0f" : "#a0aec0",
-    cursor: "pointer",
-    fontFamily: "inherit",
-  });
-
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <div style={{ maxWidth: "1100px", margin: "0 auto" }}>
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ fontSize: "1.2rem", fontWeight: "bold", letterSpacing: "0.12em", textTransform: "uppercase", color: "#00ffff", margin: 0 }}>PDF管理</h1>
+    <div className="page">
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">PDF管理</h1>
+          <p className="page__sub">アップロードしたPDFを絞り込んで、LINEで個別／一括配信します。</p>
         </div>
+      </div>
 
-        {/* ドロップゾーン */}
-        <div
-          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(true); }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
-          style={{ border: `2px dashed ${dragging ? "#00ffff" : "rgba(0,255,255,0.2)"}`, borderRadius: "6px", padding: "1.5rem", textAlign: "center", marginBottom: "1.25rem", boxShadow: dragging ? "0 0 8px rgba(0,255,255,0.4)" : "none", transition: "border-color 0.2s, box-shadow 0.2s" }}
-        >
-          <input ref={fileInputRef} type="file" accept=".pdf,.zip" multiple onChange={handleFileInput} style={{ display: "none" }} id="pdf-upload" />
-          <label htmlFor="pdf-upload" style={{ background: "transparent", border: "1px solid #00ffff", color: uploading ? "#4a5568" : "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: uploading ? "wait" : "pointer", fontSize: "0.75rem", fontFamily: "inherit", display: "inline-block" }}>
-            {uploading ? "UPLOADING..." : "SELECT FILES"}
-          </label>
-          <p style={{ fontSize: "0.75rem", marginTop: "0.5rem", color: "#718096" }}>PDF・ZIP選択、またはフォルダをD&D</p>
-        </div>
+      {/* アップロード */}
+      <div
+        className={`dropzone ${dragging ? "is-dragging" : ""}`}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={handleDrop}
+        style={{ marginBottom: 16 }}
+      >
+        <input ref={fileInputRef} type="file" accept=".pdf,.zip" multiple onChange={handleFileInput} style={{ display: "none" }} id="pdf-upload" />
+        <label htmlFor="pdf-upload" className="btn btn--primary" style={{ cursor: uploading ? "wait" : "pointer" }}>
+          {uploading ? "アップロード中…" : "ファイルを選択"}
+        </label>
+        <p style={{ fontSize: 12, marginTop: 8, color: "var(--text-2)" }}>
+          PDF / ZIP を選択、またはフォルダをドラッグ&ドロップ
+        </p>
+      </div>
 
-        {loading ? (
-          <p style={{ color: "#718096", fontSize: "0.8rem" }}>LOADING...</p>
-        ) : allPdfs.length === 0 ? (
-          <p style={{ color: "#718096", fontSize: "0.8rem" }}>NO PDF FILES FOUND.</p>
-        ) : (
-          <>
-            {/* 年タブ */}
-            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-              <button onClick={() => setSelectedYear("all")} style={tabStyle(selectedYear === "all")}>ALL ({allPdfs.length})</button>
-              {years.map((y) => (
-                <button key={y} onClick={() => setSelectedYear(y)} style={tabStyle(selectedYear === y)}>
-                  {y} ({allPdfs.filter((p) => toYear(p.uploadedAt) === y).length})
+      {loading ? (
+        <div className="empty">読み込み中…</div>
+      ) : allPdfs.length === 0 ? (
+        <div className="empty">PDFが登録されていません。上のエリアからアップロードしてください。</div>
+      ) : (
+        <>
+          {/* 年タブ */}
+          <div className="toolbar" style={{ marginBottom: 6 }}>
+            <span className="toolbar__label">年</span>
+            <button onClick={() => setSelectedYear("all")} className={`chip ${selectedYear === "all" ? "is-active" : ""}`}>
+              すべて <span className="chip__count num">{allPdfs.length}</span>
+            </button>
+            {years.map((y) => (
+              <button key={y} onClick={() => setSelectedYear(y)} className={`chip ${selectedYear === y ? "is-active" : ""}`}>
+                <span className="num">{y}</span>
+                <span className="chip__count num">{allPdfs.filter((p) => toYear(p.uploadedAt) === y).length}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* 月タブ */}
+          {selectedYear !== "all" && selectedYear !== "" && (
+            <div className="toolbar" style={{ marginBottom: 6 }}>
+              <span className="toolbar__label">月</span>
+              <button onClick={() => setSelectedMonth("all")} className={`chip ${selectedMonth === "all" ? "is-active" : ""}`}>
+                すべて <span className="chip__count num">{yearPdfs.length}</span>
+              </button>
+              {months.map((m) => (
+                <button key={m} onClick={() => setSelectedMonth(m)} className={`chip ${selectedMonth === m ? "is-active" : ""}`}>
+                  <span className="num">{parseInt(m)}</span>月
+                  <span className="chip__count num">{yearPdfs.filter((p) => toMonth(p.uploadedAt) === m).length}</span>
                 </button>
               ))}
             </div>
+          )}
 
-            {/* 月タブ */}
-            {selectedYear !== "all" && selectedYear !== "" && (
-              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                <button onClick={() => setSelectedMonth("all")} style={tabStyle(selectedMonth === "all")}>ALL ({yearPdfs.length})</button>
-                {months.map((m) => (
-                  <button key={m} onClick={() => setSelectedMonth(m)} style={tabStyle(selectedMonth === m)}>
-                    {parseInt(m)}月 ({yearPdfs.filter((p) => toMonth(p.uploadedAt) === m).length})
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* カテゴリフィルタ */}
-            {allCategories.length > 0 && (
-              <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center", marginBottom: "1rem" }}>
-                <span style={{ fontSize: "0.75rem", color: "#00ffff", letterSpacing: "0.1em", marginRight: "0.25rem" }}>CATEGORY:</span>
-                <button onClick={() => handleCategorySelect("all")} style={tabStyle(selectedCategory === "all")}>ALL</button>
-                {allCategories.map((c) => (
-                  <button key={c} onClick={() => handleCategorySelect(c)} style={tabStyle(selectedCategory === c)}>{c}</button>
-                ))}
-              </div>
-            )}
-
-            {/* 操作バー */}
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.75rem", color: "#718096" }}>
-                {filteredPdfs.length} FILES{selected.size > 0 && ` / ${selected.size} SELECTED`}
-              </span>
-              {selected.size > 0 && (
-                <>
-                  <button onClick={() => setShowSendModal(true)} style={{ background: "transparent", border: "1px solid #ff00ff", color: "#ff00ff", padding: "0.3rem 0.75rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
-                    LINE SEND ({selected.size})
-                  </button>
-                  <button onClick={() => handleBulkDelete(Array.from(selected), `選択した${selected.size}件`)} disabled={deleting} style={{ background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
-                    {deleting ? "DELETING..." : "DELETE"}
-                  </button>
-                </>
-              )}
+          {/* カテゴリ */}
+          {allCategories.length > 0 && (
+            <div className="toolbar" style={{ marginBottom: 14 }}>
+              <span className="toolbar__label">カテゴリ</span>
+              <button onClick={() => handleCategorySelect("all")} className={`chip ${selectedCategory === "all" ? "is-active" : ""}`}>
+                すべて
+              </button>
+              {allCategories.map((c) => (
+                <button key={c} onClick={() => handleCategorySelect(c)} className={`chip ${selectedCategory === c ? "is-active" : ""}`}>{c}</button>
+              ))}
             </div>
+          )}
 
-            {/* テーブル */}
-            <div style={{ border: "1px solid rgba(0,255,255,0.15)", borderRadius: "6px", overflow: "hidden" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.8rem" }}>
+          {/* 操作バー */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+            <div style={{ fontSize: 12, color: "var(--text-2)" }}>
+              <span className="num">{filteredPdfs.length}</span>
+              <span> 件</span>
+              {selected.size > 0 && <> / <span className="num" style={{ color: "var(--blue)" }}>{selected.size}</span> 件選択中</>}
+            </div>
+            {selected.size > 0 && (
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setShowSendModal(true)} className="btn btn--primary">
+                  LINE送信 ({selected.size})
+                </button>
+                <button onClick={() => handleBulkDelete(Array.from(selected), `選択した${selected.size}件`)} disabled={deleting} className="btn btn--danger">
+                  {deleting ? "削除中…" : "削除"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* テーブル */}
+          <div className="card">
+            <div className="card__body card__body--flush" style={{ overflowX: "auto" }}>
+              <table className="tbl">
                 <thead>
                   <tr>
-                    <th style={{ background: "#111827", color: "#00ffff", fontSize: "0.75rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", width: "2rem" }}>
+                    <th style={{ width: 36 }}>
                       <input type="checkbox" checked={selected.size === filteredPdfs.length && filteredPdfs.length > 0} onChange={toggleSelectAll} />
                     </th>
-                    {["FILE NAME","NAME","CATEGORY","SIZE","ACTION"].map((h, i) => (
-                      <th key={h} style={{ background: "#111827", color: "#00ffff", fontSize: "0.75rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.6rem 0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", textAlign: i >= 3 ? "right" : "left" }}>{h}</th>
-                    ))}
+                    <th>ファイル名</th>
+                    <th>氏名</th>
+                    <th>カテゴリ</th>
+                    <th className="th-right">サイズ</th>
+                    <th className="th-right">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredPdfs.map((pdf) => {
                     const person = getPersonForPdf(pdf);
-                    const td: React.CSSProperties = { padding: "0.6rem 0.75rem", color: "#e2e8f0", borderBottom: "1px solid rgba(0,255,255,0.07)" };
+                    const isSel = selected.has(pdf.id);
                     return (
-                      <tr key={pdf.id} style={selected.has(pdf.id) ? { background: "rgba(0,255,255,0.05)" } : {}}>
-                        <td style={td}><input type="checkbox" checked={selected.has(pdf.id)} onChange={() => toggleSelect(pdf.id)} /></td>
-                        <td style={{ ...td, fontSize: "0.75rem", maxWidth: "12rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pdf.originalFileName}</td>
-                        <td style={{ ...td, fontSize: "0.75rem" }}>{pdf.personName || "-"}</td>
-                        <td style={{ ...td, fontSize: "0.75rem" }}>
+                      <tr key={pdf.id} className={isSel ? "is-selected" : ""}>
+                        <td>
+                          <input type="checkbox" checked={isSel} onChange={() => toggleSelect(pdf.id)} />
+                        </td>
+                        <td style={{ maxWidth: 360 }} className="truncate">{pdf.originalFileName}</td>
+                        <td>{pdf.personName || <span className="text-mute">—</span>}</td>
+                        <td>
                           {person?.categories?.length ? (
-                            <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                               {person.categories.map((c) => (
-                                <span key={c} style={{ border: "1px solid #00ffff", color: "#00ffff", fontSize: "0.75rem", padding: "0.1rem 0.4rem", borderRadius: "3px", background: "rgba(0,255,255,0.06)" }}>{c}</span>
+                                <span key={c} className="badge badge--blue">{c}</span>
                               ))}
                             </div>
-                          ) : (
-                            <button onClick={() => { if (person) { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); } }} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
-                              {person ? "+ SET" : "-"}
+                          ) : person ? (
+                            <button
+                              onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }}
+                              className="btn btn--ghost btn--sm"
+                            >
+                              + 設定
                             </button>
+                          ) : (
+                            <span className="text-mute">—</span>
                           )}
                         </td>
-                        <td style={{ ...td, textAlign: "right", fontSize: "0.75rem", color: "#718096" }}>{formatSize(pdf.fileSizeBytes)}</td>
-                        <td style={{ ...td, textAlign: "right" }}>
+                        <td className="td-right num td-muted">{formatSize(pdf.fileSizeBytes)}</td>
+                        <td className="td-right">
                           {person && (
-                            <button onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }} style={{ background: "none", border: "none", color: "#00ffff", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>EDIT</button>
+                            <button
+                              onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }}
+                              className="btn btn--ghost btn--sm"
+                            >
+                              編集
+                            </button>
                           )}
                         </td>
                       </tr>
@@ -375,29 +386,33 @@ export default function PdfsPage() {
                 </tbody>
               </table>
             </div>
-          </>
-        )}
+          </div>
+        </>
+      )}
 
-        {/* カテゴリ編集モーダル */}
-        {editingPerson && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={() => setEditingPerson(null)}>
-            <div style={{ background: "#0d1117", border: "1px solid #00ffff", boxShadow: "0 0 12px rgba(0,255,255,0.4)", borderRadius: "6px", padding: "1.5rem", width: "22rem", fontFamily: "inherit" }} onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.75rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>{editingPerson.name} // CATEGORY</h3>
-              <p style={{ fontSize: "0.75rem", color: "#718096", marginBottom: "0.75rem" }}>カンマ区切りで1〜3個 (例: 名古屋, 大阪)</p>
-              <input type="text" value={catInput} onChange={(e) => setCatInput(e.target.value)} autoFocus placeholder="名古屋, 大阪" style={{ background: "#111827", border: "1px solid rgba(0,255,255,0.2)", color: "#e2e8f0", borderRadius: "4px", padding: "0.45rem 0.75rem", fontSize: "0.8rem", width: "100%", outline: "none", fontFamily: "inherit", boxSizing: "border-box", marginBottom: "1rem" }} />
-              <div style={{ display: "flex", gap: "0.75rem" }}>
-                <button onClick={handleSaveCategories} style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>SAVE</button>
-                <button onClick={() => setEditingPerson(null)} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>CANCEL</button>
-              </div>
+      {/* カテゴリ編集モーダル */}
+      {editingPerson && (
+        <div className="modal__backdrop" onClick={() => setEditingPerson(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <div className="modal__title">{editingPerson.name} のカテゴリ</div>
+            </div>
+            <div className="modal__body">
+              <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, marginBottom: 8 }}>カンマ区切りで1〜3個（例：名古屋, 大阪）</p>
+              <input type="text" className="input" value={catInput} onChange={(e) => setCatInput(e.target.value)} autoFocus placeholder="名古屋, 大阪" />
+            </div>
+            <div className="modal__foot">
+              <button onClick={() => setEditingPerson(null)} className="btn">キャンセル</button>
+              <button onClick={handleSaveCategories} className="btn btn--primary">保存</button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* LINE 送信モーダル */}
-        {showSendModal && (
-          <SendModal selected={selected} recipients={recipients} sending={sending} onSend={handleSend} onClose={() => setShowSendModal(false)} />
-        )}
-      </div>
+      {/* LINE送信モーダル */}
+      {showSendModal && (
+        <SendModal selected={selected} recipients={recipients} sending={sending} onSend={handleSend} onClose={() => setShowSendModal(false)} />
+      )}
     </div>
   );
 }
@@ -418,30 +433,47 @@ function SendModal({
   const [chosenId, setChosenId] = useState<string>("");
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }} onClick={onClose}>
-      <div style={{ background: "#0d1117", border: "1px solid #00ffff", boxShadow: "0 0 12px rgba(0,255,255,0.4)", borderRadius: "6px", padding: "1.5rem", width: "22rem", fontFamily: "'JetBrains Mono','Courier New',monospace" }} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "1rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>LINE SEND // {selected.size} FILES</h3>
-
-        <div style={{ marginBottom: "1rem" }}>
-          <label style={{ display: "block", fontSize: "0.75rem", color: "#00ffff", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.5rem" }}>SELECT RECIPIENT</label>
+    <div className="modal__backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <div className="modal__title">LINE送信 · <span className="num">{selected.size}</span>件</div>
+        </div>
+        <div className="modal__body">
+          <div className="field__label" style={{ marginBottom: 8 }}>送信先を選択</div>
           {recipients.length === 0 ? (
-            <p style={{ fontSize: "0.75rem", color: "#718096" }}>有効な送信先がありません。Botにメッセージを送ってもらうと自動登録されます。</p>
+            <p style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>
+              有効な送信先がありません。Botにメッセージを送ってもらうと自動登録されます。
+            </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem", maxHeight: "12rem", overflowY: "auto" }}>
-              {recipients.map((r) => (
-                <label key={r.id} style={{ display: "flex", alignItems: "center", gap: "0.75rem", padding: "0.5rem 0.75rem", borderRadius: "4px", cursor: "pointer", border: `1px solid ${chosenId === r.id ? "#00ffff" : "rgba(0,255,255,0.15)"}`, background: chosenId === r.id ? "rgba(0,255,255,0.06)" : "transparent" }}>
-                  <input type="radio" name="recipient" checked={chosenId === r.id} onChange={() => setChosenId(r.id)} />
-                  <span style={{ fontSize: "0.8rem" }}>{r.displayName}</span>
-                  {(r as Record<string, unknown>).type === "group" && (
-                    <span style={{ border: "1px solid #ff00ff", color: "#ff00ff", fontSize: "0.75rem", padding: "0.1rem 0.35rem", borderRadius: "3px" }}>GROUP</span>
-                  )}
-                </label>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
+              {recipients.map((r) => {
+                const isSel = chosenId === r.id;
+                const isGroup = (r as Record<string, unknown>).type === "group";
+                return (
+                  <label
+                    key={r.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 10px",
+                      borderRadius: 5,
+                      cursor: "pointer",
+                      border: `1px solid ${isSel ? "var(--blue-border)" : "var(--border)"}`,
+                      background: isSel ? "var(--blue-soft)" : "var(--surface)",
+                    }}
+                  >
+                    <input type="radio" name="recipient" checked={isSel} onChange={() => setChosenId(r.id)} />
+                    <span style={{ fontSize: 13, flex: 1 }}>{r.displayName}</span>
+                    {isGroup && <span className="badge badge--purple">グループ</span>}
+                  </label>
+                );
+              })}
             </div>
           )}
         </div>
-
-        <div style={{ display: "flex", gap: "0.75rem" }}>
+        <div className="modal__foot">
+          <button onClick={onClose} className="btn">キャンセル</button>
           <button
             onClick={() => {
               if (!chosenId) { alert("送信先を選択してください"); return; }
@@ -449,11 +481,10 @@ function SendModal({
               if (confirm(`「${name}」に ${selected.size}件を LINE 送信しますか？`)) onSend(chosenId);
             }}
             disabled={sending || !chosenId}
-            style={{ background: "transparent", border: "1px solid #ff00ff", color: "#ff00ff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", opacity: sending || !chosenId ? 0.5 : 1 }}
+            className="btn btn--primary"
           >
-            {sending ? "SENDING..." : "SEND"}
+            {sending ? "送信中…" : "送信する"}
           </button>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>CANCEL</button>
         </div>
       </div>
     </div>
