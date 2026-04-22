@@ -52,7 +52,7 @@ export default function PdfsPage() {
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [initialized, setInitialized] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showSendModal, setShowSendModal] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
@@ -106,14 +106,27 @@ export default function PdfsPage() {
 
   const filteredPdfs = useMemo(() => {
     let result = selectedMonth === "all" ? yearPdfs : yearPdfs.filter((p) => toMonth(p.uploadedAt) === selectedMonth);
-    if (selectedCategory !== "all") {
+    if (selectedCategories.length > 0) {
+      // OR 絞り込み：選択カテゴリのどれかに属する人物のPDFを残す
       result = result.filter((p) => {
         const cats = p.personId ? personCatMap.get(p.personId) : [];
-        return cats?.includes(selectedCategory);
+        return cats?.some((c) => selectedCategories.includes(c)) ?? false;
+      });
+      // 選択順でソート → 同カテゴリ内は氏名 → ファイル名
+      result = [...result].sort((a, b) => {
+        const aCats = (a.personId ? personCatMap.get(a.personId) : []) ?? [];
+        const bCats = (b.personId ? personCatMap.get(b.personId) : []) ?? [];
+        const aIdx = selectedCategories.findIndex((c) => aCats.includes(c));
+        const bIdx = selectedCategories.findIndex((c) => bCats.includes(c));
+        if (aIdx !== bIdx) return aIdx - bIdx;
+        const aName = a.personName ?? "";
+        const bName = b.personName ?? "";
+        if (aName !== bName) return aName.localeCompare(bName, "ja");
+        return a.originalFileName.localeCompare(b.originalFileName, "ja");
       });
     }
     return result;
-  }, [yearPdfs, selectedMonth, selectedCategory, personCatMap]);
+  }, [yearPdfs, selectedMonth, selectedCategories, personCatMap]);
 
   useEffect(() => {
     if (!initialized && years.length > 0) {
@@ -128,18 +141,34 @@ export default function PdfsPage() {
     }
   }, [selectedYear, months]);
 
-  useEffect(() => { setSelected(new Set()); }, [selectedYear, selectedMonth, selectedCategory]);
+  useEffect(() => { setSelected(new Set()); }, [selectedYear, selectedMonth]);
 
-  const handleCategorySelect = (cat: string) => {
-    setSelectedCategory(cat);
-    if (cat === "all") {
+  // カテゴリトグル：選択中のカテゴリは選択順に配列で保持
+  const handleToggleCategory = (cat: string) => {
+    const next = selectedCategories.includes(cat)
+      ? selectedCategories.filter((c) => c !== cat)
+      : [...selectedCategories, cat];
+    setSelectedCategories(next);
+    // カテゴリ絞込み後のPDFをまとめて選択状態にする（一括送信のショートカット）
+    if (next.length === 0) {
       setSelected(new Set());
-    } else {
-      const ids = filteredPdfs
-        .filter((p) => p.personId && personCatMap.get(p.personId)?.includes(cat))
-        .map((p) => p.id);
-      setSelected(new Set(ids));
+      return;
     }
+    const base = selectedMonth === "all"
+      ? yearPdfs
+      : yearPdfs.filter((p) => toMonth(p.uploadedAt) === selectedMonth);
+    const ids = base
+      .filter((p) => {
+        const cats = p.personId ? personCatMap.get(p.personId) : [];
+        return cats?.some((c) => next.includes(c)) ?? false;
+      })
+      .map((p) => p.id);
+    setSelected(new Set(ids));
+  };
+
+  const handleClearCategories = () => {
+    setSelectedCategories([]);
+    setSelected(new Set());
   };
 
   const uploadFiles = useCallback(async (files: File[], folderName?: string) => {
@@ -292,16 +321,35 @@ export default function PdfsPage() {
             </div>
           )}
 
-          {/* カテゴリ */}
+          {/* カテゴリ（複数選択・選択順でソート） */}
           {allCategories.length > 0 && (
             <div className="toolbar" style={{ marginBottom: 14 }}>
               <span className="toolbar__label">カテゴリ</span>
-              <button onClick={() => handleCategorySelect("all")} className={`chip ${selectedCategory === "all" ? "is-active" : ""}`}>
+              <button
+                onClick={handleClearCategories}
+                className={`chip ${selectedCategories.length === 0 ? "is-active" : ""}`}
+              >
                 すべて
               </button>
-              {allCategories.map((c) => (
-                <button key={c} onClick={() => handleCategorySelect(c)} className={`chip ${selectedCategory === c ? "is-active" : ""}`}>{c}</button>
-              ))}
+              {allCategories.map((c) => {
+                const idx = selectedCategories.indexOf(c);
+                const isActive = idx >= 0;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => handleToggleCategory(c)}
+                    className={`chip ${isActive ? "is-active" : ""}`}
+                  >
+                    {isActive && <span className="chip__count num">{idx + 1}</span>}
+                    {c}
+                  </button>
+                );
+              })}
+              {selectedCategories.length >= 2 && (
+                <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 4 }}>
+                  選択順でソート
+                </span>
+              )}
             </div>
           )}
 
