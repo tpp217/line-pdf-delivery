@@ -20,15 +20,17 @@ const DAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
 
 function describeCron(cron: string): string {
   const [, , dom, , dow] = cron.split(" ");
-  if (dom !== "*" && dow === "*") return `毎月${dom.split(",").join("・")}日 15:00`;
-  if (dow !== "*" && dom === "*") return `毎週${dow.split(",").map((d) => DAY_NAMES[parseInt(d)] || d).join("・")}曜 15:00`;
+  if (dom !== "*" && dow === "*") return `毎月 ${dom.split(",").join("・")}日 15:00`;
+  if (dow !== "*" && dom === "*") return `毎週 ${dow.split(",").map((d) => DAY_NAMES[parseInt(d)] || d).join("・")}曜 15:00`;
   if (dom === "*" && dow === "*") return `毎日 15:00`;
   return cron;
 }
 
 function formatDate(d: string | null) {
-  if (!d) return "-";
-  return new Date(d).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  if (!d) return "—";
+  const dt = new Date(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(dt.getMonth() + 1)}/${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
 export default function RemindersPage() {
@@ -67,78 +69,86 @@ export default function RemindersPage() {
   };
 
   return (
-    <div style={{ padding: "1.5rem" }}>
-      <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-          <div>
-            <h1 style={{ fontSize: "1.2rem", fontWeight: "bold", color: "#e2e8f0", margin: 0, letterSpacing: "0.05em" }}>リマインダー</h1>
-            <p style={{ color: "#718096", fontSize: "0.75rem", marginTop: "0.3rem" }}>指定日時にテキストを自動LINE送信</p>
-          </div>
-          <button
-            onClick={() => { setEditTarget(null); setShowForm(true); }}
-            style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.35rem 1rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}
-          >
-            + 新規作成
-          </button>
+    <div className="page">
+      <div className="page__head">
+        <div>
+          <h1 className="page__title">リマインダー</h1>
+          <p className="page__sub">指定スケジュールでテキストを自動LINE送信します。</p>
         </div>
+        <button
+          onClick={() => { setEditTarget(null); setShowForm(true); }}
+          className="btn btn--primary"
+        >
+          + 新規作成
+        </button>
+      </div>
 
-        {showForm && (
-          <ReminderForm
-            target={editTarget}
-            recipients={recipients}
-            onDone={() => { setShowForm(false); setEditTarget(null); fetchData(); }}
-            onCancel={() => { setShowForm(false); setEditTarget(null); }}
-          />
-        )}
+      {showForm && (
+        <ReminderForm
+          target={editTarget}
+          recipients={recipients}
+          onDone={() => { setShowForm(false); setEditTarget(null); fetchData(); }}
+          onCancel={() => { setShowForm(false); setEditTarget(null); }}
+        />
+      )}
 
-        {loading ? (
-          <p style={{ color: "#718096", fontSize: "0.8rem" }}>読み込み中...</p>
-        ) : reminders.length === 0 ? (
-          <p style={{ color: "#718096", fontSize: "0.8rem" }}>リマインダーがありません。</p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {reminders.map((r) => (
-              <div key={r.id} style={{
-                border: `1px solid ${r.isActive ? "rgba(0,255,255,0.25)" : "rgba(255,255,255,0.07)"}`,
-                borderRadius: "6px",
-                padding: "1rem",
-                background: "#0d1117",
-                opacity: r.isActive ? 1 : 0.55,
-              }}>
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: "0.85rem", color: "#e2e8f0" }}>{r.title}</div>
-                    <div style={{ fontSize: "0.75rem", color: "#00ffff", marginTop: "0.3rem" }}>{describeCron(r.cronExpression)}</div>
-                    <div style={{ fontSize: "0.75rem", color: "#718096", marginTop: "0.2rem" }}>→ {r.recipient?.displayName || "不明"}</div>
-                    <div style={{ fontSize: "0.75rem", color: "#718096", marginTop: "0.5rem", background: "#111827", borderRadius: "4px", padding: "0.25rem 0.5rem", display: "inline-block", maxWidth: "28rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {r.message}
-                    </div>
+      {loading ? (
+        <div className="empty">読み込み中…</div>
+      ) : reminders.length === 0 ? (
+        <div className="empty">リマインダーがありません。右上の「新規作成」から追加してください。</div>
+      ) : (
+        <div style={{ display: "grid", gap: 12 }}>
+          {reminders.map((r) => (
+            <div
+              key={r.id}
+              className="card"
+              style={{ opacity: r.isActive ? 1 : 0.62 }}
+            >
+              <div style={{ padding: 14, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: "var(--text)" }}>{r.title}</span>
+                    {r.isActive ? (
+                      <span className="badge badge--green"><span className="dot dot--green" />有効</span>
+                    ) : (
+                      <span className="badge badge--gray">無効</span>
+                    )}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.4rem", fontSize: "0.75rem" }}>
-                    <button
-                      onClick={() => handleToggle(r)}
-                      style={{
-                        border: `1px solid ${r.isActive ? "#00ff41" : "#718096"}`,
-                        color: r.isActive ? "#00ff41" : "#718096",
-                        background: r.isActive ? "rgba(0,255,65,0.06)" : "transparent",
-                        fontSize: "0.7rem", padding: "0.1rem 0.5rem", borderRadius: "3px", cursor: "pointer", fontFamily: "inherit",
-                      }}
-                    >
-                      {r.isActive ? "有効" : "無効"}
-                    </button>
-                    <div style={{ color: "#718096" }}>次回: {formatDate(r.nextRunAt)}</div>
-                    {r.lastRunAt && <div style={{ color: "#4a5568" }}>前回: {formatDate(r.lastRunAt)}</div>}
+                  <div style={{ fontSize: 12.5, color: "var(--blue-2)", marginBottom: 2 }} className="num">{describeCron(r.cronExpression)}</div>
+                  <div style={{ fontSize: 12, color: "var(--text-2)", marginBottom: 8 }}>
+                    → {r.recipient?.displayName || "不明"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "var(--text-2)",
+                      background: "var(--surface-2)",
+                      borderRadius: 4,
+                      padding: "6px 10px",
+                      maxWidth: 520,
+                    }}
+                    className="truncate"
+                  >
+                    {r.message}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.75rem", borderTop: "1px solid rgba(0,255,255,0.07)", paddingTop: "0.5rem" }}>
-                  <button onClick={() => { setEditTarget(r); setShowForm(true); }} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.1rem 0.3rem" }}>編集</button>
-                  <button onClick={() => handleDelete(r)} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", padding: "0.1rem 0.3rem" }}>削除</button>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, fontSize: 11.5, color: "var(--text-3)", flexShrink: 0 }}>
+                  <label className="toggle">
+                    <input type="checkbox" checked={r.isActive} onChange={() => handleToggle(r)} />
+                    <span className="toggle__track"><span className="toggle__thumb" /></span>
+                  </label>
+                  <div>次回: <span className="num" style={{ color: "var(--text-2)" }}>{formatDate(r.nextRunAt)}</span></div>
+                  {r.lastRunAt && <div>前回: <span className="num">{formatDate(r.lastRunAt)}</span></div>}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+              <div style={{ display: "flex", gap: 2, padding: "8px 10px", borderTop: "1px solid var(--border)", background: "var(--surface-2)" }}>
+                <button onClick={() => { setEditTarget(r); setShowForm(true); }} className="btn btn--ghost btn--sm">編集</button>
+                <button onClick={() => handleDelete(r)} className="btn btn--danger btn--sm">削除</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -214,19 +224,6 @@ function ReminderForm({
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    background: "#111827",
-    border: "1px solid rgba(0,255,255,0.2)",
-    color: "#e2e8f0",
-    borderRadius: "4px",
-    padding: "0.45rem 0.75rem",
-    fontSize: "0.8rem",
-    width: "100%",
-    outline: "none",
-    fontFamily: "inherit",
-    boxSizing: "border-box",
-  };
-
   const scheduleOpts = [
     { value: "daily", label: "毎日" },
     { value: "weekly", label: "毎週" },
@@ -234,61 +231,45 @@ function ReminderForm({
   ];
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50 }}
-      onClick={onCancel}
-    >
-      <div
-        style={{ background: "#0d1117", border: "1px solid #00ffff", boxShadow: "0 0 12px rgba(0,255,255,0.4)", borderRadius: "6px", padding: "1.5rem", width: "28rem", maxHeight: "90vh", overflowY: "auto", fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+    <div className="modal__backdrop" onClick={onCancel}>
+      <form
+        onSubmit={handleSubmit}
         onClick={(e) => e.stopPropagation()}
+        className="modal modal--wide"
       >
-        <h2 style={{ color: "#00ffff", fontSize: "0.8rem", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "1.25rem", borderBottom: "1px solid rgba(0,255,255,0.2)", paddingBottom: "0.5rem" }}>
-          {isEdit ? "リマインダー編集" : "新規リマインダー"}
-        </h2>
+        <div className="modal__head">
+          <div className="modal__title">{isEdit ? "リマインダー編集" : "新規リマインダー"}</div>
+        </div>
+        <div className="modal__body">
+          {error && <div className="alert alert--red">{error}</div>}
 
-        {error && (
-          <p style={{ color: "#f87171", fontSize: "0.75rem", marginBottom: "0.75rem", background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "4px", padding: "0.4rem 0.75rem" }}>
-            {error}
-          </p>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>タイトル</label>
-            <input type="text" style={inputStyle} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例: 月次報告リマインド" required />
+          <div className="field">
+            <label className="field__label">タイトル</label>
+            <input type="text" className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例: 月次報告リマインド" required />
           </div>
 
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>メッセージ</label>
-            <textarea style={{ ...inputStyle, height: "5rem", resize: "none" }} value={message} onChange={(e) => setMessage(e.target.value)} placeholder="LINEに送信するテキスト" required />
+          <div className="field">
+            <label className="field__label">メッセージ</label>
+            <textarea className="textarea" value={message} onChange={(e) => setMessage(e.target.value)} placeholder="LINEに送信するテキスト" required />
           </div>
 
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>送信先</label>
-            <select style={inputStyle} value={recipientId} onChange={(e) => setRecipientId(e.target.value)} required>
-              <option value="">選択</option>
+          <div className="field">
+            <label className="field__label">送信先</label>
+            <select className="select" value={recipientId} onChange={(e) => setRecipientId(e.target.value)} required>
+              <option value="">選択してください</option>
               {recipients.map((r) => <option key={r.id} value={r.id}>{r.displayName}</option>)}
             </select>
           </div>
 
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.5rem" }}>繰り返し</label>
-            <div style={{ display: "flex", gap: "0.5rem" }}>
+          <div className="field">
+            <label className="field__label">繰り返し</label>
+            <div style={{ display: "flex", gap: 6 }}>
               {scheduleOpts.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => { setScheduleType(opt.value); setSelectedDays([]); }}
-                  style={{
-                    padding: "0.3rem 0.75rem",
-                    fontSize: "0.75rem",
-                    borderRadius: "4px",
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    border: `1px solid ${scheduleType === opt.value ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-                    background: scheduleType === opt.value ? "#00ffff" : "transparent",
-                    color: scheduleType === opt.value ? "#0a0a0f" : "#a0aec0",
-                  }}
+                  className={`chip ${scheduleType === opt.value ? "is-active" : ""}`}
                 >
                   {opt.label}
                 </button>
@@ -297,78 +278,83 @@ function ReminderForm({
           </div>
 
           {scheduleType === "weekly" && (
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.5rem" }}>曜日</label>
-              <div style={{ display: "flex", gap: "0.4rem" }}>
-                {DAY_NAMES.map((name, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => toggleDay(i)}
-                    style={{
-                      width: "2.2rem", height: "2.2rem",
-                      borderRadius: "4px",
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      border: `1px solid ${selectedDays.includes(i) ? "#00ffff" : "rgba(0,255,255,0.2)"}`,
-                      background: selectedDays.includes(i) ? "#00ffff" : "transparent",
-                      color: selectedDays.includes(i) ? "#0a0a0f" : "#a0aec0",
-                    }}
-                  >
-                    {name}
-                  </button>
-                ))}
+            <div className="field">
+              <label className="field__label">曜日</label>
+              <div style={{ display: "flex", gap: 6 }}>
+                {DAY_NAMES.map((name, i) => {
+                  const isSel = selectedDays.includes(i);
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => toggleDay(i)}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 5,
+                        fontSize: 12.5,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                        fontWeight: 500,
+                        border: `1px solid ${isSel ? "var(--blue)" : "var(--border)"}`,
+                        background: isSel ? "var(--blue)" : "var(--surface)",
+                        color: isSel ? "#fff" : "var(--text-2)",
+                      }}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {scheduleType === "monthly" && (
-            <div style={{ marginBottom: "0.75rem" }}>
-              <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.5rem" }}>日</label>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "0.3rem" }}>
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    onClick={() => toggleDay(d)}
-                    style={{
-                      height: "2rem",
-                      borderRadius: "3px",
-                      fontSize: "0.75rem",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      border: `1px solid ${selectedDays.includes(d) ? "#00ffff" : "rgba(0,255,255,0.15)"}`,
-                      background: selectedDays.includes(d) ? "#00ffff" : "transparent",
-                      color: selectedDays.includes(d) ? "#0a0a0f" : "#a0aec0",
-                    }}
-                  >
-                    {d}
-                  </button>
-                ))}
+            <div className="field">
+              <label className="field__label">日</label>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
+                  const isSel = selectedDays.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => toggleDay(d)}
+                      style={{
+                        height: 30,
+                        borderRadius: 4,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        fontFamily: "var(--font-mono)",
+                        fontVariantNumeric: "tabular-nums",
+                        border: `1px solid ${isSel ? "var(--blue)" : "var(--border)"}`,
+                        background: isSel ? "var(--blue)" : "var(--surface)",
+                        color: isSel ? "#fff" : "var(--text-2)",
+                      }}
+                    >
+                      {d}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
 
-          <div style={{ marginBottom: "1.25rem" }}>
-            <label style={{ display: "block", fontSize: "0.75rem", color: "#718096", marginBottom: "0.3rem" }}>送信時刻</label>
-            <p style={{ fontSize: "0.8rem", color: "#e2e8f0" }}>15:00 (固定)</p>
+          <div className="field">
+            <label className="field__label">送信時刻</label>
+            <p style={{ fontSize: 13, color: "var(--text)", margin: 0 }}>
+              <span className="num">15:00</span> <span className="text-mute">(固定)</span>
+            </p>
           </div>
+        </div>
 
-          <div style={{ display: "flex", gap: "0.75rem" }}>
-            <button
-              type="submit"
-              disabled={saving}
-              style={{ background: "transparent", border: "1px solid #00ffff", color: "#00ffff", padding: "0.4rem 1.25rem", borderRadius: "4px", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit", opacity: saving ? 0.5 : 1 }}
-            >
-              {saving ? "保存中..." : isEdit ? "更新" : "作成"}
-            </button>
-            <button type="button" onClick={onCancel} style={{ background: "none", border: "none", color: "#718096", cursor: "pointer", fontSize: "0.75rem", fontFamily: "inherit" }}>
-              キャンセル
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="modal__foot">
+          <button type="button" onClick={onCancel} className="btn">キャンセル</button>
+          <button type="submit" disabled={saving} className="btn btn--primary">
+            {saving ? "保存中…" : isEdit ? "更新する" : "作成する"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

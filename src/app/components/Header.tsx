@@ -17,75 +17,62 @@ export default function Header() {
 
   useEffect(() => {
     setEmbedded(window.self !== window.top);
-    const update = () =>
-      setTime(
-        new Date()
-          .toLocaleString("ja-JP", {
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit",
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          })
-          .replace(/\//g, ".")
-      );
+    const update = () => {
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      setTime(`${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`);
+    };
     update();
-    const t = setInterval(update, 1000);
+    const t = setInterval(update, 30000);
     return () => clearInterval(t);
   }, []);
 
   return (
     <header
       style={{
-        borderBottom: "1px solid rgba(0,255,255,0.2)",
-        padding: "0 1.5rem",
+        position: "sticky",
+        top: 0,
+        zIndex: 40,
+        height: 48,
+        padding: "0 24px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        background: "rgba(0,255,255,0.03)",
-        boxShadow: "0 2px 20px rgba(0,255,255,0.08)",
-        height: "3rem",
+        background: "var(--surface)",
+        borderBottom: "1px solid var(--border)",
         flexShrink: 0,
       }}
     >
-      {/* 左: システム名 + ナビ */}
-      <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
         {!embedded && (
           <span
             style={{
-              color: "#00ffff",
-              fontSize: "0.8rem",
-              letterSpacing: "0.15em",
+              fontSize: 13,
               fontWeight: 700,
+              color: "var(--text)",
+              letterSpacing: "-0.01em",
             }}
           >
-            LPD
+            LINE PDF
           </span>
         )}
 
-        <nav style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+        <nav style={{ display: "flex", alignItems: "center", gap: 2 }}>
           {navItems.map((item) => {
             const isActive = pathname.startsWith(item.href);
-
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 style={{
                   textDecoration: "none",
-                  fontSize: "0.75rem",
-                  padding: "0.35rem 0.65rem",
-                  borderRadius: "4px",
-                  color: isActive ? "#00ffff" : "#718096",
-                  background: isActive
-                    ? "rgba(0,255,255,0.08)"
-                    : "transparent",
-                  borderBottom: isActive
-                    ? "2px solid #00ffff"
-                    : "2px solid transparent",
-                  transition: "color 0.15s, background 0.15s",
-                  letterSpacing: "0.04em",
+                  fontSize: 12.5,
+                  fontWeight: isActive ? 600 : 500,
+                  padding: "6px 10px",
+                  borderRadius: 5,
+                  color: isActive ? "var(--text)" : "var(--text-2)",
+                  background: isActive ? "var(--surface-2)" : "transparent",
+                  transition: "background 0.12s, color 0.12s",
                 }}
               >
                 {item.label}
@@ -95,21 +82,28 @@ export default function Header() {
         </nav>
       </div>
 
-      {/* 右: 時刻・ステータス (iframe埋め込み時はHUBと重複するので非表示) */}
       {!embedded && (
         <div
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "1.5rem",
-            fontSize: "0.7rem",
-            color: "#718096",
+            gap: 14,
+            fontSize: 11.5,
+            color: "var(--text-3)",
           }}
         >
-          <span>
-            <span style={{ color: "#00ffff" }}>{time}</span>
+          <span className="num">{time}</span>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 5,
+              color: "var(--text-2)",
+            }}
+          >
+            <span className="dot dot--green" />
+            稼働中
           </span>
-          <span style={{ color: "#00ff41" }}>● ONLINE</span>
         </div>
       )}
     </header>
