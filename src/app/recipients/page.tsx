@@ -42,7 +42,7 @@ export default function RecipientsPage() {
   };
 
   const handleRemove = async (id: string, name: string) => {
-    if (!confirm(`「${name}」を完全に削除しますか？ この操作は取り消せません。`)) return;
+    if (!confirm(`「${name}」を完全に削除しますか？\n送信履歴・リマインダー・ルーティングルールも全て削除されます。この操作は取り消せません。`)) return;
     const res = await fetch(`/api/v1/recipients/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

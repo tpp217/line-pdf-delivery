@@ -21,20 +21,27 @@ export async function PATCH(request: NextRequest, ctx: Context) {
   const body = await request.json()
 
   if (body._delete) {
-    // 送信履歴があるなら完全削除はできない（履歴保護のため）
-    const { count: sendJobCount, error: sendJobErr } = await supabase
+    // 依存レコードを子→親の順でカスケード削除
+    // 1) 送信ジョブのIDを取得 → 2) 配信イベントを削除 → 3) 送信ジョブ削除
+    //    → 4) リマインダー・ルーティングルール削除 → 5) 送信先本体を削除
+    const { data: sendJobs, error: sjFetchErr } = await supabase
       .from('send_jobs')
-      .select('id', { count: 'exact', head: true })
+      .select('id')
       .eq('recipientId', id)
-    if (sendJobErr) return Response.json({ error: sendJobErr.message }, { status: 500 })
-    if ((sendJobCount ?? 0) > 0) {
-      return Response.json(
-        { error: `この送信先には送信履歴(${sendJobCount}件)が残っているため、完全削除はできません。「無効化」をご利用ください。` },
-        { status: 409 }
-      )
+    if (sjFetchErr) return Response.json({ error: `送信履歴取得失敗: ${sjFetchErr.message}` }, { status: 500 })
+
+    const sendJobIds = (sendJobs ?? []).map((j) => j.id)
+    if (sendJobIds.length > 0) {
+      const { error: evErr } = await supabase
+        .from('delivery_events')
+        .delete()
+        .in('sendJobId', sendJobIds)
+      if (evErr) return Response.json({ error: `配信イベント削除失敗: ${evErr.message}` }, { status: 500 })
+
+      const { error: sjErr } = await supabase.from('send_jobs').delete().eq('recipientId', id)
+      if (sjErr) return Response.json({ error: `送信ジョブ削除失敗: ${sjErr.message}` }, { status: 500 })
     }
 
-    // 依存テーブル（リマインダー・ルーティングルール）を先に削除してから本体を削除
     const { error: remErr } = await supabase.from('reminders').delete().eq('recipientId', id)
     if (remErr) return Response.json({ error: `リマインダー削除失敗: ${remErr.message}` }, { status: 500 })
 
