@@ -32,17 +32,27 @@ export default function RecipientsPage() {
 
   const handleDeactivate = async (id: string, name: string) => {
     if (!confirm(`「${name}」を無効化しますか？`)) return;
-    await fetch(`/api/v1/recipients/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/v1/recipients/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(`無効化に失敗しました: ${data.error || res.statusText}`);
+      return;
+    }
     fetchRecipients();
   };
 
   const handleRemove = async (id: string, name: string) => {
     if (!confirm(`「${name}」を完全に削除しますか？ この操作は取り消せません。`)) return;
-    await fetch(`/api/v1/recipients/${id}`, {
+    const res = await fetch(`/api/v1/recipients/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ _delete: true }),
     });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || `削除に失敗しました (${res.status})`);
+      return;
+    }
     fetchRecipients();
   };
 

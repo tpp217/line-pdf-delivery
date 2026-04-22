@@ -21,6 +21,26 @@ export async function PATCH(request: NextRequest, ctx: Context) {
   const body = await request.json()
 
   if (body._delete) {
+    // 送信履歴があるなら完全削除はできない（履歴保護のため）
+    const { count: sendJobCount, error: sendJobErr } = await supabase
+      .from('send_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('recipientId', id)
+    if (sendJobErr) return Response.json({ error: sendJobErr.message }, { status: 500 })
+    if ((sendJobCount ?? 0) > 0) {
+      return Response.json(
+        { error: `この送信先には送信履歴(${sendJobCount}件)が残っているため、完全削除はできません。「無効化」をご利用ください。` },
+        { status: 409 }
+      )
+    }
+
+    // 依存テーブル（リマインダー・ルーティングルール）を先に削除してから本体を削除
+    const { error: remErr } = await supabase.from('reminders').delete().eq('recipientId', id)
+    if (remErr) return Response.json({ error: `リマインダー削除失敗: ${remErr.message}` }, { status: 500 })
+
+    const { error: ruleErr } = await supabase.from('routing_rules').delete().eq('recipientId', id)
+    if (ruleErr) return Response.json({ error: `ルーティングルール削除失敗: ${ruleErr.message}` }, { status: 500 })
+
     const { error } = await supabase.from('recipients').delete().eq('id', id)
     if (error) return Response.json({ error: error.message }, { status: 500 })
     return new Response(null, { status: 204 })
