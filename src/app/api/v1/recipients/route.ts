@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('recipients')
     .select('*')
+    .order('sortOrder', { ascending: true })
     .order('createdAt', { ascending: false })
 
   if (isActive !== null) query = query.eq('isActive', isActive === 'true')
@@ -49,6 +50,15 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  // 新規は末尾に追加
+  const { data: maxRow } = await supabase
+    .from('recipients')
+    .select('sortOrder')
+    .order('sortOrder', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const nextOrder = (maxRow?.sortOrder ?? 0) + 1
+
   const { data, error } = await supabase
     .from('recipients')
     .insert({
@@ -57,6 +67,7 @@ export async function POST(request: NextRequest) {
       memo: memo ?? null,
       isActive: isActive ?? true,
       isDefault: isDefault ?? false,
+      sortOrder: nextOrder,
     })
     .select()
     .single()
