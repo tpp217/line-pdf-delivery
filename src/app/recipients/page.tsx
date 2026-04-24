@@ -1,6 +1,23 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import {
+  DndContext,
+  DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 type Recipient = {
   id: string;
@@ -10,7 +27,143 @@ type Recipient = {
   isActive: boolean;
   isDefault: boolean;
   createdAt: string;
+  sortOrder?: number;
 };
+
+function IconGrip() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+      <circle cx="6" cy="3" r="1.2" />
+      <circle cx="10" cy="3" r="1.2" />
+      <circle cx="6" cy="8" r="1.2" />
+      <circle cx="10" cy="8" r="1.2" />
+      <circle cx="6" cy="13" r="1.2" />
+      <circle cx="10" cy="13" r="1.2" />
+    </svg>
+  );
+}
+
+function SortableRow({
+  r,
+  onEdit,
+  onDeactivate,
+  onRemove,
+}: {
+  r: Recipient;
+  onEdit: (r: Recipient) => void;
+  onDeactivate: (id: string, name: string) => void;
+  onRemove: (id: string, name: string) => void;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: r.id });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    background: isDragging ? "var(--surface-2)" : undefined,
+    opacity: isDragging ? 0.7 : undefined,
+    position: isDragging ? "relative" : undefined,
+    zIndex: isDragging ? 5 : undefined,
+  };
+
+  const isGroup = (r as Record<string, unknown>).type === "group";
+
+  return (
+    <tr ref={setNodeRef} style={style}>
+      <td style={{ width: 32, padding: "0 4px" }}>
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label="並び替え"
+          title="ドラッグで並び替え"
+          {...attributes}
+          {...listeners}
+          style={{
+            width: 24,
+            height: 24,
+            border: "none",
+            background: "transparent",
+            color: "var(--text-mute)",
+            cursor: "grab",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 0,
+            touchAction: "none",
+          }}
+        >
+          <IconGrip />
+        </button>
+      </td>
+      <td>
+        <span style={{ fontWeight: 500 }}>{r.displayName}</span>
+        {r.isDefault && (
+          <span className="badge badge--blue" style={{ marginLeft: 6 }}>
+            デフォルト
+          </span>
+        )}
+      </td>
+      <td className="td-center">
+        <span
+          className={`badge ${isGroup ? "badge--purple" : "badge--gray"}`}
+        >
+          {isGroup ? "グループ" : "個人"}
+        </span>
+      </td>
+      <td
+        className="num td-muted truncate"
+        style={{ maxWidth: 140, fontSize: 12 }}
+      >
+        {r.lineUserId}
+      </td>
+      <td className="td-muted truncate" style={{ maxWidth: 200 }}>
+        {r.memo || <span className="text-mute">—</span>}
+      </td>
+      <td className="td-center">
+        {r.isActive ? (
+          <span className="badge badge--green">
+            <span className="dot dot--green" />
+            有効
+          </span>
+        ) : (
+          <span className="badge badge--gray">無効</span>
+        )}
+      </td>
+      <td className="td-right">
+        <div style={{ display: "inline-flex", gap: 2 }}>
+          <button
+            onClick={() => onEdit(r)}
+            className="btn btn--ghost btn--sm"
+          >
+            編集
+          </button>
+          {r.isActive && (
+            <button
+              onClick={() => onDeactivate(r.id, r.displayName)}
+              className="btn btn--ghost btn--sm"
+              style={{ color: "var(--amber)" }}
+            >
+              無効化
+            </button>
+          )}
+          <button
+            onClick={() => onRemove(r.id, r.displayName)}
+            className="btn btn--danger btn--sm"
+          >
+            削除
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export default function RecipientsPage() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
@@ -29,6 +182,36 @@ export default function RecipientsPage() {
   useEffect(() => {
     fetchRecipients();
   }, [fetchRecipients]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = recipients.findIndex((r) => r.id === active.id);
+    const newIndex = recipients.findIndex((r) => r.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const next = arrayMove(recipients, oldIndex, newIndex);
+    const snapshot = recipients;
+    setRecipients(next);
+
+    try {
+      const res = await fetch("/api/v1/recipients/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: next.map((r) => r.id) }),
+      });
+      if (!res.ok) throw new Error("保存失敗");
+    } catch {
+      // ロールバック
+      setRecipients(snapshot);
+      alert("並び替えの保存に失敗しました");
+    }
+  };
 
   const handleDeactivate = async (id: string, name: string) => {
     if (!confirm(`「${name}」を無効化しますか？`)) return;
@@ -61,7 +244,7 @@ export default function RecipientsPage() {
       <div className="page__head">
         <div>
           <h1 className="page__title">送信先管理</h1>
-          <p className="page__sub">LINEの送信先を登録・管理します。</p>
+          <p className="page__sub">LINEの送信先を登録・管理します。行頭の6点アイコンをドラッグで並び替えできます。</p>
         </div>
         <button
           onClick={() => { setEditTarget(null); setShowForm(true); }}
@@ -86,58 +269,41 @@ export default function RecipientsPage() {
       ) : (
         <div className="card">
           <div className="card__body card__body--flush" style={{ overflowX: "auto" }}>
-            <table className="tbl">
-              <thead>
-                <tr>
-                  <th>表示名</th>
-                  <th className="th-center">種別</th>
-                  <th>LINE ID</th>
-                  <th>メモ</th>
-                  <th className="th-center">状態</th>
-                  <th className="th-right">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recipients.map((r) => {
-                  const isGroup = (r as Record<string, unknown>).type === "group";
-                  return (
-                    <tr key={r.id}>
-                      <td>
-                        <span style={{ fontWeight: 500 }}>{r.displayName}</span>
-                        {r.isDefault && <span className="badge badge--blue" style={{ marginLeft: 6 }}>デフォルト</span>}
-                      </td>
-                      <td className="td-center">
-                        <span className={`badge ${isGroup ? "badge--purple" : "badge--gray"}`}>
-                          {isGroup ? "グループ" : "個人"}
-                        </span>
-                      </td>
-                      <td className="num td-muted truncate" style={{ maxWidth: 140, fontSize: 12 }}>
-                        {r.lineUserId}
-                      </td>
-                      <td className="td-muted truncate" style={{ maxWidth: 200 }}>
-                        {r.memo || <span className="text-mute">—</span>}
-                      </td>
-                      <td className="td-center">
-                        {r.isActive ? (
-                          <span className="badge badge--green"><span className="dot dot--green" />有効</span>
-                        ) : (
-                          <span className="badge badge--gray">無効</span>
-                        )}
-                      </td>
-                      <td className="td-right">
-                        <div style={{ display: "inline-flex", gap: 2 }}>
-                          <button onClick={() => { setEditTarget(r); setShowForm(true); }} className="btn btn--ghost btn--sm">編集</button>
-                          {r.isActive && (
-                            <button onClick={() => handleDeactivate(r.id, r.displayName)} className="btn btn--ghost btn--sm" style={{ color: "var(--amber)" }}>無効化</button>
-                          )}
-                          <button onClick={() => handleRemove(r.id, r.displayName)} className="btn btn--danger btn--sm">削除</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }} aria-label="並び替え" />
+                    <th>表示名</th>
+                    <th className="th-center">種別</th>
+                    <th>LINE ID</th>
+                    <th>メモ</th>
+                    <th className="th-center">状態</th>
+                    <th className="th-right">操作</th>
+                  </tr>
+                </thead>
+                <SortableContext
+                  items={recipients.map((r) => r.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <tbody>
+                    {recipients.map((r) => (
+                      <SortableRow
+                        key={r.id}
+                        r={r}
+                        onEdit={(rcp) => { setEditTarget(rcp); setShowForm(true); }}
+                        onDeactivate={handleDeactivate}
+                        onRemove={handleRemove}
+                      />
+                    ))}
+                  </tbody>
+                </SortableContext>
+              </table>
+            </DndContext>
           </div>
         </div>
       )}
