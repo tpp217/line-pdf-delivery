@@ -103,6 +103,13 @@ body {
   transition: background 0.12s;
 }
 .btn:active, .btn:hover { background: var(--blue-2); }
+.btn--secondary {
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+}
+.btn--secondary:active, .btn--secondary:hover {
+  background: var(--bg); border-color: var(--text-3);
+}
+.btn-row { display: flex; flex-direction: column; gap: 8px; }
 .hint { margin-top: 14px; font-size: 12px; color: var(--text-3); line-height: 1.5; }
 .ios-hint {
   margin-top: 14px; padding: 10px 12px;
@@ -153,9 +160,14 @@ function renderLanding(p: {
       <span class="meta__row">${escape(p.originalFileName)}</span>
       ${p.sizeStr ? `<span class="meta__row">${escape(p.sizeStr)}</span>` : ''}
     </div>
-    <a class="btn" href="/dl/${encodeURIComponent(p.id)}/file" download>
-      ダウンロード
-    </a>${iosHint}
+    <div class="btn-row">
+      <a class="btn" href="/dl/${encodeURIComponent(p.id)}/view" target="_blank" rel="noopener">
+        表示する
+      </a>
+      <a class="btn btn--secondary" href="/dl/${encodeURIComponent(p.id)}/file" download>
+        ダウンロード
+      </a>
+    </div>${iosHint}
     <p class="hint">
       うまく保存できない場合は、ブラウザで開き直してから再度お試しください。
     </p>
