@@ -1,12 +1,19 @@
 import { supabase } from '@/lib/supabase'
 import { NextRequest } from 'next/server'
 
-type Context = { params: Promise<{ id: string }> }
+type Context = { params: Promise<{ id: string; filename: string }> }
 
 /**
- * /dl/{id}/view
+ * /dl/{id}/view/{filename}
+ *
  * PDF をブラウザ内で開く（Content-Disposition: inline）。
- * id は UUID（pdf_documents.id）または短縮コード（short_code）を受け付ける。
+ * iOS Safari / LINE 内蔵ブラウザは「表示中の PDF を共有 → ファイルに保存」
+ * したとき、Content-Disposition の filename を無視して URL パスの最終
+ * セグメントから保存ファイル名を生成する挙動がある。そのため、URL に
+ * 元ファイル名を含めて、保存時の名前が正しくなるようにする。
+ *
+ * 実際のPDF特定は id（UUID または short_code）でのみ行い、filename
+ * パラメータは URL 表示用なのでサーバ側ではバリデーションのみ。
  */
 export async function GET(_req: NextRequest, ctx: Context) {
   const { id } = await ctx.params
