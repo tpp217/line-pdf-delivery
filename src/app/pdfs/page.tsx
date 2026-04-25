@@ -220,11 +220,11 @@ export default function PdfsPage() {
     setDeleting(false);
   };
 
-  const handleSend = async (recipientId: string) => {
+  const handleSend = async (recipientIds: string[]) => {
     setSending(true);
     const res = await fetch("/api/v1/pdfs/send", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pdfIds: Array.from(selected), recipientId }),
+      body: JSON.stringify({ pdfIds: Array.from(selected), recipient_ids: recipientIds }),
     });
     const result = await res.json();
     if (res.ok) {
@@ -475,63 +475,125 @@ function SendModal({
   selected: Set<string>;
   recipients: Recipient[];
   sending: boolean;
-  onSend: (recipientId: string) => void;
+  onSend: (recipientIds: string[]) => void;
   onClose: () => void;
 }) {
-  const [chosenId, setChosenId] = useState<string>("");
+  const [chosenIds, setChosenIds] = useState<string[]>([]);
+
+  const toggle = (id: string) => {
+    setChosenIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+  const selectAll = () => setChosenIds(recipients.map((r) => r.id));
+  const clearAll = () => setChosenIds([]);
 
   return (
     <div className="modal__backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <div className="modal__title">LINE送信 · <span className="num">{selected.size}</span>件</div>
         </div>
         <div className="modal__body">
-          <div className="field__label" style={{ marginBottom: 8 }}>送信先を選択</div>
+          <div className="field__label" style={{ marginBottom: 8 }}>
+            送信先（複数選択可）
+            <span style={{ marginLeft: 8, fontWeight: 400, color: "var(--text-3)" }}>
+              {chosenIds.length} / {recipients.length} 件選択中
+            </span>
+          </div>
           {recipients.length === 0 ? (
             <p style={{ fontSize: 12, color: "var(--text-2)", margin: 0 }}>
               有効な送信先がありません。Botにメッセージを送ってもらうと自動登録されます。
             </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 260, overflowY: "auto" }}>
-              {recipients.map((r) => {
-                const isSel = chosenId === r.id;
-                const isGroup = (r as Record<string, unknown>).type === "group";
-                return (
-                  <label
-                    key={r.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      padding: "8px 10px",
-                      borderRadius: 5,
-                      cursor: "pointer",
-                      border: `1px solid ${isSel ? "var(--blue-border)" : "var(--border)"}`,
-                      background: isSel ? "var(--blue-soft)" : "var(--surface)",
-                    }}
-                  >
-                    <input type="radio" name="recipient" checked={isSel} onChange={() => setChosenId(r.id)} />
-                    <span style={{ fontSize: 13, flex: 1 }}>{r.displayName}</span>
-                    {isGroup && <span className="badge badge--purple">グループ</span>}
-                  </label>
-                );
-              })}
-            </div>
+            <>
+              <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                <button type="button" onClick={selectAll} className="btn btn--sm btn--ghost">すべて選択</button>
+                <button type="button" onClick={clearAll} className="btn btn--sm btn--ghost" disabled={chosenIds.length === 0}>クリア</button>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+                  gap: 4,
+                  maxHeight: 280,
+                  overflowY: "auto",
+                  padding: 6,
+                  border: "1px solid var(--border)",
+                  borderRadius: 5,
+                  background: "var(--surface)",
+                }}
+              >
+                {recipients.map((r) => {
+                  const isSel = chosenIds.includes(r.id);
+                  const isGroup = (r as Record<string, unknown>).type === "group";
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => toggle(r.id)}
+                      aria-pressed={isSel}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "6px 9px",
+                        fontSize: 12,
+                        fontWeight: 500,
+                        color: isSel ? "var(--blue-2)" : "var(--text-2)",
+                        background: isSel ? "var(--blue-soft)" : "var(--surface)",
+                        border: `1px solid ${isSel ? "var(--blue-border)" : "var(--border)"}`,
+                        borderRadius: 5,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        minWidth: 0,
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      <span
+                        aria-hidden
+                        style={{
+                          width: 12,
+                          height: 12,
+                          borderRadius: 3,
+                          border: "1px solid var(--border-strong)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 9,
+                          fontWeight: 700,
+                          color: isSel ? "#fff" : "transparent",
+                          background: isSel ? "var(--blue)" : "var(--surface)",
+                          borderColor: isSel ? "var(--blue)" : "var(--border-strong)",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {isSel ? "✓" : ""}
+                      </span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.displayName}
+                      </span>
+                      {isGroup && <span className="badge badge--purple" style={{ marginLeft: "auto" }}>G</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
         <div className="modal__foot">
-          <button onClick={onClose} className="btn">キャンセル</button>
+          <button onClick={onClose} className="btn" disabled={sending}>キャンセル</button>
           <button
             onClick={() => {
-              if (!chosenId) { alert("送信先を選択してください"); return; }
-              const name = recipients.find((r) => r.id === chosenId)?.displayName;
-              if (confirm(`「${name}」に ${selected.size}件を LINE 送信しますか？`)) onSend(chosenId);
+              if (chosenIds.length === 0) { alert("送信先を選択してください"); return; }
+              if (confirm(`${chosenIds.length}件の宛先に PDF ${selected.size}件を LINE 送信しますか？`)) {
+                onSend(chosenIds);
+              }
             }}
-            disabled={sending || !chosenId}
+            disabled={sending || chosenIds.length === 0}
             className="btn btn--primary"
           >
-            {sending ? "送信中…" : "送信する"}
+            {sending ? "送信中…" : `送信 (${chosenIds.length}件)`}
           </button>
         </div>
       </div>
