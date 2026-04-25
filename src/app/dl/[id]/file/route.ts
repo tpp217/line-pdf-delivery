@@ -33,16 +33,16 @@ export async function GET(_req: NextRequest, ctx: Context) {
   }
 
   const buffer = await fileData.arrayBuffer()
-  const asciiFallback =
-    pdf.originalFileName.replace(/[^\x20-\x7E]+/g, '_') || 'download'
+  // Content-Disposition: filename= 側を優先するクライアント（iOS LINE
+  // の「ファイルに保存」など）でファイル名が「_.pdf」のように
+  // 壊れないよう、両フィールドとも encodeURIComponent した値を入れる。
   const encoded = encodeURIComponent(pdf.originalFileName)
 
   return new Response(buffer, {
     headers: {
       'Content-Type': 'application/octet-stream',
       'Content-Disposition':
-        `attachment; filename="${asciiFallback.replace(/"/g, '')}"; ` +
-        `filename*=UTF-8''${encoded}`,
+        `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
       'Content-Length': buffer.byteLength.toString(),
       'Cache-Control': 'private, no-store',
     },
