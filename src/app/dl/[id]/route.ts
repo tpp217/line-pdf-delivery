@@ -161,7 +161,7 @@ function renderLanding(p: {
       ${p.sizeStr ? `<span class="meta__row">${escape(p.sizeStr)}</span>` : ''}
     </div>
     <div class="btn-row">
-      <a class="btn" href="/dl/${encodeURIComponent(p.id)}/view" target="_blank" rel="noopener">
+      <a class="btn" href="/dl/${encodeURIComponent(p.id)}/view/${encodeURIComponent(p.originalFileName)}" target="_blank" rel="noopener">
         表示する
       </a>
       <a class="btn btn--secondary" href="/dl/${encodeURIComponent(p.id)}/file" download>
