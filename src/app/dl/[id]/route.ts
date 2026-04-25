@@ -134,7 +134,7 @@ function renderLanding(p: {
     <div class="ios-hint">
       <div class="ios-hint__title">iPhone で保存先を選ぶには</div>
       <ol class="ios-hint__steps">
-        <li>上の「ダウンロード」をタップ</li>
+        <li>上の「表示する」をタップ</li>
         <li>画面下の「…」から「共有」をタップ</li>
         <li>「ファイルに保存」→ 保存したいフォルダを選択</li>
       </ol>
