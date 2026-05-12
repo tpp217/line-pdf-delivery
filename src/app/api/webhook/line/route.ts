@@ -15,6 +15,42 @@ function verifySignature(body: string, signature: string | null, secret: string 
   }
 }
 
+async function nextSortOrder(): Promise<number> {
+  const { data } = await supabase
+    .from('recipients')
+    .select('sortOrder')
+    .order('sortOrder', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data?.sortOrder ?? 0) + 1
+}
+
+async function fetchGroupName(groupId: string, token: string): Promise<string> {
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return 'グループ'
+    const summary = await res.json()
+    return summary.groupName || 'グループ'
+  } catch {
+    return 'グループ'
+  }
+}
+
+async function fetchUserName(userId: string, token: string): Promise<string> {
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return userId
+    const profile = await res.json()
+    return profile.displayName || userId
+  } catch {
+    return userId
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text()
   const signature = request.headers.get('x-line-signature')
@@ -38,108 +74,91 @@ export async function POST(request: NextRequest) {
   }
 
   const token = process.env.LINE_CHANNEL_ACCESS_TOKEN
-  if (!token) return Response.json({ ok: true })
+  if (!token) {
+    console.error('[webhook] LINE_CHANNEL_ACCESS_TOKEN is not set')
+    return Response.json({ ok: true })
+  }
+
+  console.log(`[webhook] received ${events.length} event(s)`)
 
   for (const event of events) {
-    // グループ参加イベント
-    if (event.type === 'join' && event.source?.type === 'group') {
-      const groupId = event.source.groupId
-      if (!groupId) continue
+    const sourceType = event.source?.type
+
+    // グループ／ルーム由来のイベント（join含む）
+    if (sourceType === 'group' || sourceType === 'room') {
+      const groupId = event.source.groupId || event.source.roomId
+      if (!groupId) {
+        console.log('[webhook] group event without id, skip')
+        continue
+      }
 
       const { data: existing } = await supabase
         .from('recipients')
-        .select('id')
+        .select('id, isActive')
         .eq('lineUserId', groupId)
         .maybeSingle()
 
       if (existing) {
-        await supabase.from('recipients').update({ isActive: true }).eq('id', existing.id)
-        console.log(`[webhook] Group activated: ${groupId}`)
+        if (!existing.isActive) {
+          await supabase.from('recipients').update({ isActive: true }).eq('id', existing.id)
+          console.log(`[webhook] Group reactivated: ${groupId}`)
+        }
         continue
       }
 
-      const summaryRes = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      let groupName = 'グループ'
-      if (summaryRes.ok) {
-        const summary = await summaryRes.json()
-        groupName = summary.groupName || groupName
-      }
-
-      await supabase.from('recipients').insert({
+      const groupName = sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム'
+      const { error } = await supabase.from('recipients').insert({
         lineUserId: groupId,
         displayName: groupName,
         isActive: true,
-        type: 'group',
+        isDefault: false,
+        type: sourceType,
+        sortOrder: await nextSortOrder(),
       })
-      console.log(`[webhook] Group registered: ${groupName} (${groupId})`)
+      if (error) {
+        console.error(`[webhook] Group insert failed (${groupId}):`, error.message)
+      } else {
+        console.log(`[webhook] Group registered: ${groupName} (${groupId})`)
+      }
+      // グループ／ルーム由来のイベントは、発言者個人を recipient に追加しない
       continue
     }
 
-    // グループ内メッセージ → グループを登録
-    if (event.source?.type === 'group' && event.source?.groupId) {
-      const groupId = event.source.groupId
-
-      const { data: existing } = await supabase
-        .from('recipients')
-        .select('id')
-        .eq('lineUserId', groupId)
-        .maybeSingle()
-
-      if (!existing) {
-        const summaryRes = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        let groupName = 'グループ'
-        if (summaryRes.ok) {
-          const summary = await summaryRes.json()
-          groupName = summary.groupName || groupName
-        }
-        await supabase.from('recipients').insert({
-          lineUserId: groupId,
-          displayName: groupName,
-          isActive: true,
-          type: 'group',
-        })
-        console.log(`[webhook] Group registered via message: ${groupName} (${groupId})`)
-      }
-    }
-
-    // 個人ユーザー
+    // 個人ユーザー由来のイベント（follow / message ほか）
     const userId = event.source?.userId
-    if (!userId) continue
+    if (!userId) {
+      console.log('[webhook] event without userId, skip')
+      continue
+    }
 
     const { data: existing } = await supabase
       .from('recipients')
-      .select('id')
+      .select('id, isActive')
       .eq('lineUserId', userId)
       .maybeSingle()
 
     if (existing) {
-      await supabase
-        .from('recipients')
-        .update({ isActive: true })
-        .eq('id', existing.id)
-      console.log(`[webhook] Already registered, activated: ${userId}`)
+      if (!existing.isActive) {
+        await supabase.from('recipients').update({ isActive: true }).eq('id', existing.id)
+        console.log(`[webhook] User reactivated: ${userId}`)
+      }
       continue
     }
 
-    const profileRes = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const displayName = await fetchUserName(userId, token)
+    const { error } = await supabase.from('recipients').insert({
+      lineUserId: userId,
+      displayName,
+      isActive: true,
+      isDefault: false,
+      type: 'user',
+      sortOrder: await nextSortOrder(),
     })
-
-    let displayName = userId
-    if (profileRes.ok) {
-      const profile = await profileRes.json()
-      displayName = profile.displayName || userId
+    if (error) {
+      console.error(`[webhook] User insert failed (${userId}):`, error.message)
+    } else {
+      console.log(`[webhook] User registered: ${displayName} (${userId})`)
     }
-
-    await supabase
-      .from('recipients')
-      .insert({ lineUserId: userId, displayName, isActive: true, type: 'user' })
-
-    console.log(`[webhook] New registered: ${displayName} (${userId})`)
   }
 
   return Response.json({ ok: true })
