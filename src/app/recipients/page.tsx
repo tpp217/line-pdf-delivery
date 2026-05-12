@@ -324,9 +324,53 @@ function RecipientForm({
   const [lineUserId, setLineUserId] = useState(target?.lineUserId ?? "");
   const [memo, setMemo] = useState(target?.memo ?? "");
   const [isDefault, setIsDefault] = useState(target?.isDefault ?? false);
+  const [linkedCategories, setLinkedCategories] = useState<string[]>([]);
+  const [allCategories, setAllCategories] = useState<string[]>([]);
+  const [newCatInput, setNewCatInput] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const isEdit = !!target;
+
+  useEffect(() => {
+    // 既存カテゴリ集合を persons から取得
+    fetch("/api/v1/persons")
+      .then((r) => r.json())
+      .then((persons: { categories?: string[] }[]) => {
+        const s = new Set<string>();
+        for (const p of persons) for (const c of p.categories ?? []) s.add(c);
+        setAllCategories(Array.from(s).sort());
+      })
+      .catch(() => setAllCategories([]));
+
+    if (isEdit && target) {
+      fetch(`/api/v1/recipients/${target.id}/categories`)
+        .then((r) => r.json())
+        .then((data) => setLinkedCategories(data.categories ?? []))
+        .catch(() => setLinkedCategories([]));
+    }
+  }, [isEdit, target]);
+
+  const toggleCat = (cat: string) => {
+    setLinkedCategories((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const addNewCat = () => {
+    const tokens = newCatInput.split(/[,、\s]+/).map((s) => s.trim()).filter(Boolean);
+    if (tokens.length === 0) return;
+    setLinkedCategories((prev) => {
+      const next = [...prev];
+      for (const t of tokens) if (!next.includes(t)) next.push(t);
+      return next;
+    });
+    setAllCategories((prev) => {
+      const next = [...prev];
+      for (const t of tokens) if (!next.includes(t)) next.push(t);
+      return next.sort();
+    });
+    setNewCatInput("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -352,6 +396,15 @@ function RecipientForm({
         setSaving(false);
         return;
       }
+
+      const recipientId = isEdit ? target.id : (await res.json()).id;
+      // カテゴリ紐付け保存
+      await fetch(`/api/v1/recipients/${recipientId}/categories`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: linkedCategories }),
+      });
+
       onDone();
     } catch (err) {
       setError(`通信エラー: ${err instanceof Error ? err.message : "不明"}`);
@@ -394,6 +447,56 @@ function RecipientForm({
             <span className="toggle__track"><span className="toggle__thumb" /></span>
             <span className="toggle__label">デフォルト送信先に設定</span>
           </label>
+
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+            <div className="field__label" style={{ marginBottom: 6 }}>
+              紐付けカテゴリ
+            </div>
+            <p className="field__help" style={{ marginTop: 0, marginBottom: 8 }}>
+              PDF管理画面でこのカテゴリを絞り込むと、この送信先が自動的に選択されます。
+            </p>
+            {allCategories.length > 0 && (
+              <div className="toolbar" style={{ marginBottom: 10 }}>
+                {allCategories.map((c) => {
+                  const isActive = linkedCategories.includes(c);
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => toggleCat(c)}
+                      className={`chip ${isActive ? "is-active" : ""}`}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 6 }}>
+              <input
+                type="text"
+                className="input"
+                value={newCatInput}
+                onChange={(e) => setNewCatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addNewCat();
+                  }
+                }}
+                placeholder="新規カテゴリ（カンマ区切りで複数可）"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                onClick={addNewCat}
+                className="btn"
+                disabled={!newCatInput.trim()}
+              >
+                追加
+              </button>
+            </div>
+          </div>
         </div>
 
         <div className="modal__foot">

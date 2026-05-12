@@ -23,6 +23,8 @@ type Recipient = {
   isActive: boolean;
 };
 
+type CategoryRecipientMap = Record<string, string[]>;
+
 async function readAllEntries(entry: FileSystemEntry, result: File[]): Promise<void> {
   if (entry.isFile) {
     const file = await new Promise<File>((resolve) => (entry as FileSystemFileEntry).file(resolve));
@@ -57,19 +59,28 @@ export default function PdfsPage() {
   const [showSendModal, setShowSendModal] = useState(false);
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
   const [catInput, setCatInput] = useState("");
+  const [editingCats, setEditingCats] = useState<string[]>([]);
+  const [catRecipientMap, setCatRecipientMap] = useState<CategoryRecipientMap>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [pRes, persRes, rRes] = await Promise.all([
+    const [pRes, persRes, rRes, crRes] = await Promise.all([
       fetch("/api/v1/pdfs?page=1&pageSize=1000"),
       fetch("/api/v1/persons"),
       fetch("/api/v1/recipients?isActive=true"),
+      fetch("/api/v1/category-recipients"),
     ]);
     const pData = await pRes.json();
     setAllPdfs(pData.items || []);
     setPersons(await persRes.json());
     setRecipients(await rRes.json());
+    const crData = await crRes.json();
+    const map: CategoryRecipientMap = {};
+    for (const it of (crData.items ?? []) as { category: string; recipientIds: string[] }[]) {
+      map[it.category] = it.recipientIds;
+    }
+    setCatRecipientMap(map);
     setLoading(false);
   }, []);
 
@@ -236,15 +247,38 @@ export default function PdfsPage() {
     setShowSendModal(false);
   };
 
+  const openEditPerson = (person: Person) => {
+    setEditingPerson(person);
+    setEditingCats(person.categories ?? []);
+    setCatInput("");
+  };
+
+  const toggleEditingCat = (cat: string) => {
+    setEditingCats((prev) =>
+      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    );
+  };
+
+  const addNewCategoryFromInput = () => {
+    const tokens = catInput.split(/[,、\s]+/).map((s) => s.trim()).filter(Boolean);
+    if (tokens.length === 0) return;
+    setEditingCats((prev) => {
+      const next = [...prev];
+      for (const t of tokens) if (!next.includes(t)) next.push(t);
+      return next;
+    });
+    setCatInput("");
+  };
+
   const handleSaveCategories = async () => {
     if (!editingPerson) return;
-    const cats = catInput.split(/[,、\s]+/).map((s) => s.trim()).filter(Boolean);
     await fetch(`/api/v1/persons/${editingPerson.id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ categories: cats }),
+      body: JSON.stringify({ categories: editingCats }),
     });
     setEditingPerson(null);
     setCatInput("");
+    setEditingCats([]);
     fetchData();
   };
 
@@ -408,7 +442,7 @@ export default function PdfsPage() {
                             </div>
                           ) : person ? (
                             <button
-                              onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }}
+                              onClick={() => openEditPerson(person)}
                               className="btn btn--ghost btn--sm"
                             >
                               + 設定
@@ -421,7 +455,7 @@ export default function PdfsPage() {
                         <td className="td-right">
                           {person && (
                             <button
-                              onClick={() => { setEditingPerson(person); setCatInput(person.categories?.join(", ") || ""); }}
+                              onClick={() => openEditPerson(person)}
                               className="btn btn--ghost btn--sm"
                             >
                               編集
@@ -446,8 +480,70 @@ export default function PdfsPage() {
               <div className="modal__title">{editingPerson.name} のカテゴリ</div>
             </div>
             <div className="modal__body">
-              <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, marginBottom: 8 }}>カンマ区切りで1〜3個（例：名古屋, 大阪）</p>
-              <input type="text" className="input" value={catInput} onChange={(e) => setCatInput(e.target.value)} autoFocus placeholder="名古屋, 大阪" />
+              {allCategories.length > 0 && (
+                <>
+                  <div className="field__label">既存カテゴリから選択</div>
+                  <div className="toolbar" style={{ marginBottom: 12 }}>
+                    {allCategories.map((c) => {
+                      const isActive = editingCats.includes(c);
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => toggleEditingCat(c)}
+                          className={`chip ${isActive ? "is-active" : ""}`}
+                        >
+                          {c}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              <div className="field__label">新しいカテゴリを追加</div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <input
+                  type="text"
+                  className="input"
+                  value={catInput}
+                  onChange={(e) => setCatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addNewCategoryFromInput();
+                    }
+                  }}
+                  placeholder="名古屋, 大阪（カンマ区切りで複数可）"
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="button"
+                  onClick={addNewCategoryFromInput}
+                  className="btn"
+                  disabled={!catInput.trim()}
+                >
+                  追加
+                </button>
+              </div>
+              {editingCats.length > 0 && (
+                <>
+                  <div className="field__label">付与中のカテゴリ</div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {editingCats.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => toggleEditingCat(c)}
+                        className="badge badge--blue"
+                        style={{ cursor: "pointer", border: "none", fontFamily: "inherit" }}
+                        title="クリックで外す"
+                      >
+                        {c} <span style={{ opacity: 0.6 }}>×</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
             <div className="modal__foot">
               <button onClick={() => setEditingPerson(null)} className="btn">キャンセル</button>
@@ -459,7 +555,18 @@ export default function PdfsPage() {
 
       {/* LINE送信モーダル */}
       {showSendModal && (
-        <SendModal selected={selected} recipients={recipients} sending={sending} onSend={handleSend} onClose={() => setShowSendModal(false)} />
+        <SendModal
+          selected={selected}
+          recipients={recipients}
+          sending={sending}
+          onSend={handleSend}
+          onClose={() => setShowSendModal(false)}
+          preselectRecipientIds={Array.from(
+            new Set(
+              selectedCategories.flatMap((c) => catRecipientMap[c] ?? [])
+            )
+          )}
+        />
       )}
     </div>
   );
@@ -471,14 +578,19 @@ function SendModal({
   sending,
   onSend,
   onClose,
+  preselectRecipientIds,
 }: {
   selected: Set<string>;
   recipients: Recipient[];
   sending: boolean;
   onSend: (recipientIds: string[]) => void;
   onClose: () => void;
+  preselectRecipientIds: string[];
 }) {
-  const [chosenIds, setChosenIds] = useState<string[]>([]);
+  const availableIds = useMemo(() => new Set(recipients.map((r) => r.id)), [recipients]);
+  const [chosenIds, setChosenIds] = useState<string[]>(() =>
+    preselectRecipientIds.filter((id) => availableIds.has(id))
+  );
 
   const toggle = (id: string) => {
     setChosenIds((prev) =>
