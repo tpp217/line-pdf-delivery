@@ -45,11 +45,13 @@ function IconGrip() {
 
 function SortableRow({
   r,
+  categories,
   onEdit,
   onDeactivate,
   onRemove,
 }: {
   r: Recipient;
+  categories: string[];
   onEdit: (r: Recipient) => void;
   onDeactivate: (id: string, name: string) => void;
   onRemove: (id: string, name: string) => void;
@@ -117,11 +119,16 @@ function SortableRow({
           {isGroup ? "グループ" : "個人"}
         </span>
       </td>
-      <td
-        className="num td-muted truncate"
-        style={{ maxWidth: 140, fontSize: 12 }}
-      >
-        {r.lineUserId}
+      <td style={{ maxWidth: 280 }}>
+        {categories.length > 0 ? (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {categories.map((c) => (
+              <span key={c} className="badge badge--blue">{c}</span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-mute">—</span>
+        )}
       </td>
       <td className="td-muted truncate" style={{ maxWidth: 200 }}>
         {r.memo || <span className="text-mute">—</span>}
@@ -167,15 +174,29 @@ function SortableRow({
 
 export default function RecipientsPage() {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
+  const [recipientCats, setRecipientCats] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<Recipient | null>(null);
 
   const fetchRecipients = useCallback(async () => {
     setLoading(true);
-    const res = await fetch("/api/v1/recipients");
-    const data = await res.json();
+    const [rRes, crRes] = await Promise.all([
+      fetch("/api/v1/recipients"),
+      fetch("/api/v1/category-recipients"),
+    ]);
+    const data = await rRes.json();
     setRecipients(data);
+    const crData = await crRes.json();
+    const byRecipient: Record<string, string[]> = {};
+    for (const it of (crData.items ?? []) as { category: string; recipientIds: string[] }[]) {
+      for (const rid of it.recipientIds) {
+        if (!byRecipient[rid]) byRecipient[rid] = [];
+        byRecipient[rid].push(it.category);
+      }
+    }
+    for (const rid of Object.keys(byRecipient)) byRecipient[rid].sort();
+    setRecipientCats(byRecipient);
     setLoading(false);
   }, []);
 
@@ -280,7 +301,7 @@ export default function RecipientsPage() {
                     <th style={{ width: 32 }} aria-label="並び替え" />
                     <th>表示名</th>
                     <th className="th-center">種別</th>
-                    <th>LINE ID</th>
+                    <th>カテゴリ</th>
                     <th>メモ</th>
                     <th className="th-center">状態</th>
                     <th className="th-right">操作</th>
@@ -295,6 +316,7 @@ export default function RecipientsPage() {
                       <SortableRow
                         key={r.id}
                         r={r}
+                        categories={recipientCats[r.id] ?? []}
                         onEdit={(rcp) => { setEditTarget(rcp); setShowForm(true); }}
                         onDeactivate={handleDeactivate}
                         onRemove={handleRemove}
