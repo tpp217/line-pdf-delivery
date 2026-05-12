@@ -8,6 +8,7 @@ const navItems = [
   { href: "/pdfs", label: "PDF管理" },
   { href: "/reminders", label: "リマインダー" },
   { href: "/recipients", label: "送信先" },
+  { href: "/history", label: "送信履歴" },
 ];
 
 export default function Header() {
