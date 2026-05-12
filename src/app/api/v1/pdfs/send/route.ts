@@ -19,6 +19,7 @@ import { NextRequest } from 'next/server'
  *   {
  *     success: number,
  *     failed: number,
+ *     batchId: string,
  *     results: [
  *       { recipientId, displayName, fileName, ok, error? }
  *     ]
@@ -86,6 +87,18 @@ export async function POST(request: NextRequest) {
     }),
   )
 
+  // 送信バッチを作成
+  const totalJobs = recipients.length * links.length
+  const batchTitle = `PDF送信: ${links.length}件×${recipients.length}宛先`
+  const { data: batch, error: batchErr } = await supabase
+    .from('send_batches')
+    .insert({ title: batchTitle, status: 'PROCESSING', totalJobs, startedAt: new Date().toISOString() })
+    .select('id')
+    .single()
+  if (batchErr || !batch) {
+    return Response.json({ error: `バッチ作成失敗: ${batchErr?.message}` }, { status: 500 })
+  }
+
   const results: {
     recipientId: string
     displayName: string
@@ -95,9 +108,36 @@ export async function POST(request: NextRequest) {
   }[] = []
 
   for (const r of recipients) {
-    if (!r.isActive) {
-      // 無効化されている宛先は全PDFをスキップ
-      for (const link of links) {
+    for (const link of links) {
+      const text = `${link.title} の給与明細です。\n${link.url}`
+
+      // ジョブを PENDING で作成
+      const { data: job } = await supabase
+        .from('send_jobs')
+        .insert({
+          sendBatchId: batch.id,
+          pdfDocumentId: link.id,
+          recipientId: r.id,
+          status: 'PENDING',
+          messageTitle: link.title,
+          messageBody: text,
+          signedUrl: link.url,
+        })
+        .select('id')
+        .single()
+
+      if (!r.isActive) {
+        if (job) {
+          await supabase
+            .from('send_jobs')
+            .update({ status: 'FAILED', errorMessage: '無効化されている宛先' })
+            .eq('id', job.id)
+          await supabase.from('delivery_events').insert({
+            sendJobId: job.id,
+            eventType: 'FAILED',
+            payload: { reason: 'inactive_recipient' },
+          })
+        }
         results.push({
           recipientId: r.id,
           displayName: r.displayName,
@@ -105,13 +145,35 @@ export async function POST(request: NextRequest) {
           ok: false,
           error: '無効化されている宛先',
         })
+        continue
       }
-      continue
-    }
 
-    for (const link of links) {
-      const text = `${link.title} の給与明細です。\n${link.url}`
       const res = await pushMessage(r.lineUserId, [{ type: 'text', text }])
+
+      if (job) {
+        if (res.ok) {
+          await supabase
+            .from('send_jobs')
+            .update({ status: 'SENT', sentAt: new Date().toISOString() })
+            .eq('id', job.id)
+          await supabase.from('delivery_events').insert({
+            sendJobId: job.id,
+            eventType: 'SENT',
+            payload: null,
+          })
+        } else {
+          await supabase
+            .from('send_jobs')
+            .update({ status: 'FAILED', errorMessage: res.error ?? 'unknown' })
+            .eq('id', job.id)
+          await supabase.from('delivery_events').insert({
+            sendJobId: job.id,
+            eventType: 'FAILED',
+            payload: { error: res.error },
+          })
+        }
+      }
+
       results.push({
         recipientId: r.id,
         displayName: r.displayName,
@@ -125,5 +187,16 @@ export async function POST(request: NextRequest) {
   const success = results.filter((x) => x.ok).length
   const failed = results.filter((x) => !x.ok).length
 
-  return Response.json({ success, failed, results })
+  // バッチを完了状態に
+  await supabase
+    .from('send_batches')
+    .update({
+      status: failed === 0 ? 'COMPLETED' : success === 0 ? 'FAILED' : 'PARTIAL',
+      successJobs: success,
+      failedJobs: failed,
+      completedAt: new Date().toISOString(),
+    })
+    .eq('id', batch.id)
+
+  return Response.json({ success, failed, batchId: batch.id, results })
 }

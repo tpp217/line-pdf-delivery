@@ -144,11 +144,12 @@ enum BatchStatus {
 model SendJob {
   id                 String       @id @default(uuid())
   sendBatchId        String
-  pdfDocumentId      String
+  pdfDocumentId      String?
   recipientId        String
   deliveryMode       DeliveryMode @default(PUSH)
   status             JobStatus    @default(PENDING)
   messageTitle       String?      @db.VarChar(255)
+  messageBody        String?      @db.Text
   signedUrl          String?      @db.Text
   signedUrlExpiresAt DateTime?
   lineRequestId      String?      @db.VarChar(120)
@@ -159,7 +160,7 @@ model SendJob {
   updatedAt          DateTime     @updatedAt
 
   sendBatch      SendBatch       @relation(fields: [sendBatchId], references: [id])
-  pdfDocument    PdfDocument     @relation(fields: [pdfDocumentId], references: [id])
+  pdfDocument    PdfDocument?    @relation(fields: [pdfDocumentId], references: [id])
   recipient      Recipient       @relation(fields: [recipientId], references: [id])
   deliveryEvents DeliveryEvent[]
 
