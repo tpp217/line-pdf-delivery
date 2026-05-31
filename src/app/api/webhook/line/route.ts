@@ -3,7 +3,12 @@ import { NextRequest } from 'next/server'
 import crypto from 'crypto'
 
 function verifySignature(body: string, signature: string | null, secret: string | undefined): boolean {
-  if (!secret || !signature) return false
+  if (!secret) {
+    // secret 未設定だと全リクエストを拒否してしまうため、無言ではなく明示的に警告する
+    console.error('[webhook] LINE_CHANNEL_SECRET is not set; rejecting all webhook requests')
+    return false
+  }
+  if (!signature) return false
   try {
     const hash = crypto.createHmac('SHA256', secret).update(body).digest('base64')
     const a = Buffer.from(hash)

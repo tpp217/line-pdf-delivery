@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { sanitizeLikePattern } from '@/lib/postgrest'
 import { NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -16,11 +17,19 @@ export async function GET(request: NextRequest) {
     .order('uploadedAt', { ascending: false })
 
   if (extractStatus) query = query.eq('extractStatus', extractStatus)
-  if (companyName) query = query.ilike('companyName', `%${companyName}%`)
+  if (companyName) {
+    // ユーザー入力を ilike パターンとして安全化（フィルタインジェクション対策）
+    const safe = sanitizeLikePattern(companyName)
+    if (safe) query = query.ilike('companyName', `%${safe}%`)
+  }
   if (keyword) {
-    query = query.or(
-      `originalFileName.ilike.%${keyword}%,companyName.ilike.%${keyword}%,personName.ilike.%${keyword}%`,
-    )
+    // .or() はフィルタ文字列を素で組み立てるため必ずサニタイズする
+    const safe = sanitizeLikePattern(keyword)
+    if (safe) {
+      query = query.or(
+        `originalFileName.ilike.%${safe}%,companyName.ilike.%${safe}%,personName.ilike.%${safe}%`,
+      )
+    }
   }
 
   const from = (page - 1) * pageSize

@@ -16,9 +16,11 @@ type Context = { params: Promise<{ id: string; filename: string }> }
  * パラメータは URL 表示用なのでサーバ側ではバリデーションのみ。
  */
 export async function GET(_req: NextRequest, ctx: Context) {
-  const { id } = await ctx.params
+  const { id: rawId } = await ctx.params
 
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  // short_code・UUID とも小文字なので入力を正規化（大文字混入による not found 防止）
+  const id = rawId.toLowerCase()
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)
 
   const { data: pdf } = await supabase
     .from('pdf_documents')

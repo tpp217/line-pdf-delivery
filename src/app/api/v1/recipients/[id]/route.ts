@@ -60,6 +60,11 @@ export async function PATCH(request: NextRequest, ctx: Context) {
   if (isActive !== undefined) updates.isActive = isActive
   if (isDefault !== undefined) updates.isDefault = isDefault
 
+  // 更新項目が無いリクエストは無意味な書き込みになるため早期に弾く
+  if (Object.keys(updates).length === 0) {
+    return Response.json({ error: '更新項目がありません' }, { status: 400 })
+  }
+
   const { data, error } = await supabase
     .from('recipients')
     .update(updates)

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { sanitizeLikePattern } from '@/lib/postgrest'
 import { NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -16,9 +17,11 @@ export async function GET(request: NextRequest) {
   if (isActive !== null) query = query.eq('isActive', isActive === 'true')
   if (isDefault !== null) query = query.eq('isDefault', isDefault === 'true')
   if (keyword) {
-    query = query.or(
-      `displayName.ilike.%${keyword}%,memo.ilike.%${keyword}%`,
-    )
+    // .or() はフィルタ文字列を素で組み立てるため必ずサニタイズする（インジェクション対策）
+    const safe = sanitizeLikePattern(keyword)
+    if (safe) {
+      query = query.or(`displayName.ilike.%${safe}%,memo.ilike.%${safe}%`)
+    }
   }
 
   const { data, error } = await query
