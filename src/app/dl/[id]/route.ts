@@ -10,12 +10,15 @@ import { NextRequest, NextResponse } from 'next/server'
  * ページを返す。実ファイルは /dl/{id}/file が担当する。
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  const { id } = await ctx.params
+  const { id: rawId } = await ctx.params
 
   const ua = req.headers.get('user-agent') ?? ''
   const isIOS = /iPhone|iPad|iPod/i.test(ua)
 
-  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+  // short_code（nanoid 小文字英数字）も UUID も小文字なので、入力を小文字へ正規化して
+  // 大文字混入による not found を防ぐ
+  const id = rawId.toLowerCase()
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)
 
   const { data: pdf } = await supabase
     .from('pdf_documents')
@@ -59,11 +62,16 @@ function escape(s: string): string {
     .replace(/'/g, '&#39;')
 }
 
-function formatBytes(bytes: number | null): string {
+// fileSizeBytes は DB 上 bigint 列のため、Supabase REST からは文字列で返ることがある。
+// 表示用途なので Number へ明示的に変換してから整形する（Number.MAX_SAFE_INTEGER を
+// 超える巨大値では精度が落ちうるが、PDF サイズでは事実上問題にならない）。
+function formatBytes(bytes: number | string | null): string {
   if (bytes == null) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(2)} MB`
+  const n = Number(bytes)
+  if (!Number.isFinite(n)) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(2)} MB`
 }
 
 const STYLES = `
