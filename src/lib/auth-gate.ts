@@ -1,0 +1,160 @@
+// 認証ゲート（監視モード対応）
+//
+// workspace-hub（auth.utinc.dev）が RS256 で署名したアクセストークンを
+// JWKS で検証するためのヘルパ。下流システムである本アプリは公開鍵（JWKS）
+// だけで検証し、秘密鍵には一切触れない。
+//
+// 重要な設計方針（本番を絶対に壊さないため）:
+//   - 既定は「監視モード」。AUTH_ENFORCE が "on" のときだけブロックする。
+//   - 監視モードでは検証の成否を console に記録するのみで、リクエストは素通しする。
+//   - したがって本ファイルを導入・デプロイしても、AUTH_ENFORCE 未設定なら
+//     現行の挙動（無認証で通る）は一切変わらない。
+//
+// claims（tenant_id / level / capabilities / systems）は workspace-hub の
+// src/lib/jwt.ts（AccessTokenClaims）と整合させている。
+
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
+
+// RS256 固定。発行側（workspace-hub）と同一アルゴリズム前提。
+const ALG = 'RS256'
+
+// 期待する発行者。workspace-hub の EXPECTED_ISSUER と一致させる。
+const EXPECTED_ISSUER =
+  process.env.AUTH_EXPECTED_ISSUER || 'https://auth.utinc.dev'
+
+// JWKS の取得先。既定は workspace-hub の公開エンドポイント。
+const JWKS_URL =
+  process.env.JWKS_URL || 'https://auth.utinc.dev/.well-known/jwks.json'
+
+// このアプリを表す下流システムキー。workspace-hub の system_access.system_key
+// に対応する。systems[] にこのキーが含まれるかを enforce 時のみ検証する。
+// 値が未確定なフェーズのため env で上書き可能にしておく。
+const SYSTEM_KEY = process.env.AUTH_SYSTEM_KEY || 'line-pdf-delivery'
+
+/**
+ * enforce（ブロック）が有効かどうか。
+ * AUTH_ENFORCE="on" のときだけ true。既定（未設定 / その他の値）は false（監視モード）。
+ */
+export function isAuthEnforced(): boolean {
+  return (process.env.AUTH_ENFORCE || '').toLowerCase() === 'on'
+}
+
+/**
+ * トークンから取り出す業務 claims。
+ * workspace-hub の AccessTokenClaims のサブセット。
+ */
+export interface GateClaims {
+  sub?: string
+  tenant_id?: string
+  level?: number
+  capabilities: string[]
+  systems: string[]
+  plan?: string
+}
+
+export type GateResult =
+  | { ok: true; claims: GateClaims }
+  | { ok: false; reason: GateFailureReason }
+
+export type GateFailureReason =
+  | 'missing_token' // Authorization: Bearer ヘッダが無い
+  | 'invalid_token' // 署名・期限・issuer 等の検証に失敗
+  | 'system_forbidden' // 検証は通ったが systems[] に本アプリのキーが無い
+
+// JWKS は jose 側で内部キャッシュされる。モジュールスコープで 1 度だけ生成し、
+// リクエスト毎の再取得を避ける（鍵ローテーション時は jose が自動で再取得する）。
+let jwks: ReturnType<typeof createRemoteJWKSet> | null = null
+function getJwks(): ReturnType<typeof createRemoteJWKSet> {
+  if (!jwks) {
+    jwks = createRemoteJWKSet(new URL(JWKS_URL))
+  }
+  return jwks
+}
+
+/**
+ * Authorization ヘッダから Bearer トークンを取り出す。無ければ null。
+ */
+function extractBearer(authHeader: string | null): string | null {
+  if (!authHeader) return null
+  const m = /^Bearer\s+(.+)$/i.exec(authHeader.trim())
+  return m ? m[1].trim() : null
+}
+
+function toClaims(payload: JWTPayload): GateClaims {
+  return {
+    sub: typeof payload.sub === 'string' ? payload.sub : undefined,
+    tenant_id:
+      typeof payload.tenant_id === 'string' ? payload.tenant_id : undefined,
+    level: typeof payload.level === 'number' ? payload.level : undefined,
+    capabilities: Array.isArray(payload.capabilities)
+      ? (payload.capabilities as unknown[]).filter(
+          (v): v is string => typeof v === 'string',
+        )
+      : [],
+    systems: Array.isArray(payload.systems)
+      ? (payload.systems as unknown[]).filter(
+          (v): v is string => typeof v === 'string',
+        )
+      : [],
+    plan: typeof payload.plan === 'string' ? payload.plan : undefined,
+  }
+}
+
+/**
+ * Authorization ヘッダの Bearer JWT を JWKS で検証する。
+ *
+ * - 署名 / 有効期限 / issuer を検証（aud は本アプリ側では強制しない）。
+ * - 検証に成功し、かつ systems[] に本アプリのキーが含まれていれば ok。
+ * - enforce 時のみ systems チェックの失敗を system_forbidden として扱う。
+ *   監視モードではこの関数の結果を「記録」にのみ使うため、呼び出し側で
+ *   ブロック判定は行わない。
+ *
+ * この関数自身は副作用（throw）を持たず、常に GateResult を返す。
+ */
+export async function verifyGate(
+  authHeader: string | null,
+): Promise<GateResult> {
+  const token = extractBearer(authHeader)
+  if (!token) {
+    return { ok: false, reason: 'missing_token' }
+  }
+
+  let claims: GateClaims
+  try {
+    const { payload } = await jwtVerify(token, getJwks(), {
+      algorithms: [ALG],
+      issuer: EXPECTED_ISSUER,
+    })
+    claims = toClaims(payload)
+  } catch {
+    return { ok: false, reason: 'invalid_token' }
+  }
+
+  // systems[] に本アプリのキーが含まれるか。含まれていなければ権限外。
+  if (!claims.systems.includes(SYSTEM_KEY)) {
+    return { ok: false, reason: 'system_forbidden' }
+  }
+
+  return { ok: true, claims }
+}
+
+/**
+ * 監視ログ用に、claims を機微情報を伏せた要約へ整形する。
+ * トークン本文やケイパビリティの中身は出さず、件数・テナント・レベルのみ。
+ */
+export function summarizeClaims(claims: GateClaims): Record<string, unknown> {
+  return {
+    sub: claims.sub,
+    tenant_id: claims.tenant_id,
+    level: claims.level,
+    systems: claims.systems,
+    capabilities_count: claims.capabilities.length,
+    plan: claims.plan,
+  }
+}
+
+export const AUTH_GATE_CONFIG = {
+  JWKS_URL,
+  EXPECTED_ISSUER,
+  SYSTEM_KEY,
+} as const
