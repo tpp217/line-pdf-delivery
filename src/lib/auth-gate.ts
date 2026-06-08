@@ -28,8 +28,8 @@ const JWKS_URL =
 
 // このアプリを表す下流システムキー。workspace-hub の system_access.system_key
 // に対応する。systems[] にこのキーが含まれるかを enforce 時のみ検証する。
-// 値が未確定なフェーズのため env で上書き可能にしておく。
-const SYSTEM_KEY = process.env.AUTH_SYSTEM_KEY || 'line-pdf-delivery'
+// 既定値は workspace-hub SYSTEM_CATALOG の 'lpd' と一致（AUTH_SYSTEM_KEY で上書き可）。
+const SYSTEM_KEY = process.env.AUTH_SYSTEM_KEY || 'lpd'
 
 /**
  * enforce（ブロック）が有効かどうか。
