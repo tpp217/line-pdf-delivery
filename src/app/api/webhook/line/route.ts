@@ -56,6 +56,33 @@ async function fetchUserName(userId: string, token: string): Promise<string> {
   }
 }
 
+// 業務フロー(workflow-system)へ postback イベントを転送する。
+// LINE チャネルは workflow-system と共有しており、Webhook は当アプリが専有しているため、
+// 当アプリでは扱わない postback（業務フローの承認操作など）だけを転送して肩代わりする。
+// 設定（URL/シークレット）が無ければ何もしない＝当アプリ単体の動作は一切変わらない。
+async function forwardPostbackToWorkflow(event: {
+  source?: { userId?: string }
+  postback?: { data?: string }
+  replyToken?: string
+}): Promise<void> {
+  const url = process.env.WORKFLOW_POSTBACK_URL
+  const secret = process.env.WORKFLOW_FORWARD_SECRET
+  if (!url || !secret) return
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-wf-forward-secret': secret },
+      body: JSON.stringify({
+        userId: event.source?.userId,
+        data: event.postback?.data,
+        replyToken: event.replyToken,
+      }),
+    })
+  } catch (e) {
+    console.error('[webhook] workflow postback forward failed:', e)
+  }
+}
+
 export async function POST(request: NextRequest) {
   const body = await request.text()
   const signature = request.headers.get('x-line-signature')
@@ -87,6 +114,13 @@ export async function POST(request: NextRequest) {
   console.log(`[webhook] received ${events.length} event(s)`)
 
   for (const event of events) {
+    // postback（業務フローの承認操作など）は当システムでは扱わず workflow-system へ転送する。
+    // 従来 postback は実質無処理だったため、既存の recipient 登録フローには影響しない。
+    if (event.type === 'postback') {
+      await forwardPostbackToWorkflow(event)
+      continue
+    }
+
     const sourceType = event.source?.type
 
     // グループ／ルーム由来のイベント（join含む）
