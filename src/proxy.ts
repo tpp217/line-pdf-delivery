@@ -36,7 +36,17 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl
   const method = request.method
 
-  const result = await verifyGate(request.headers.get('authorization'))
+  // トークンの取得元は 2 系統:
+  //   1. Authorization: Bearer ヘッダ（server-to-server / API クライアント）
+  //   2. wh_token cookie（SSO ログイン済みブラウザ。/auth/callback が張る HttpOnly cookie。
+  //      同一オリジンの fetch に自動で載るため、フロントのコード変更なしで認証が通る）
+  // ヘッダ優先・無ければ cookie をヘッダ相当に橋渡しする（auth-gate 本体は無変更）。
+  const headerAuth = request.headers.get('authorization')
+  const cookieToken = request.cookies.get('wh_token')?.value
+  const effectiveAuth =
+    headerAuth ?? (cookieToken ? `Bearer ${cookieToken}` : null)
+
+  const result = await verifyGate(effectiveAuth)
 
   if (result.ok) {
     // 検証成功。監視モードでも enforce でも素通しだが、観測のため記録する。
