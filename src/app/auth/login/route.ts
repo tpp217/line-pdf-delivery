@@ -14,9 +14,14 @@ const AUTH_ORIGIN = process.env.AUTH_EXPECTED_ISSUER || 'https://auth.utinc.dev'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
-  const redirectUri = `${url.origin}/auth/callback`
+  // ログイン後の戻り先（同一オリジンのパスのみ。オープンリダイレクト防止）。
+  const nextRaw = url.searchParams.get('next')
+  const next =
+    nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : '/'
+  const callback = new URL('/auth/callback', url.origin)
+  if (next !== '/') callback.searchParams.set('next', next)
   return NextResponse.redirect(
-    `${AUTH_ORIGIN}/login?redirect_uri=${encodeURIComponent(redirectUri)}`,
+    `${AUTH_ORIGIN}/login?redirect_uri=${encodeURIComponent(callback.toString())}`,
     { status: 302 },
   )
 }

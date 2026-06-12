@@ -35,6 +35,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const enforce = isAuthEnforced()
   const { pathname } = request.nextUrl
   const method = request.method
+  const isApi = pathname.startsWith('/api/v1/')
 
   // トークンの取得元は 2 系統:
   //   1. Authorization: Bearer ヘッダ（server-to-server / API クライアント）
@@ -45,6 +46,44 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const cookieToken = request.cookies.get('wh_token')?.value
   const effectiveAuth =
     headerAuth ?? (cookieToken ? `Bearer ${cookieToken}` : null)
+
+  // --- ページ（非 API）の自動 SSO 救済 ---
+  // enforce 時、未認証のブラウザがページを直接開いた（ブックマーク/直リンク）場合に、
+  // SSO ログインへ自動で飛ばして wh_token を取得させる（直接アクセス組の移行を自動化）。
+  //   - 監視モード（enforce=off）は一切リダイレクトしない＝従来挙動と完全に同一（非破壊）。
+  //   - リダイレクトはトップレベルのページ遷移（navigate / text/html GET）のみ。
+  //     fetch/XHR（API クライアント）は API 側の 401 で扱う（無限リダイレクトにしない）。
+  //   - ループ防止: 既に sso_error 付きで戻ってきたページは素通し（SSO 失敗→/?sso_error= で
+  //     戻った先で再度リダイレクトするとループするため）。/auth・/api/auth は matcher で除外済み。
+  if (!isApi) {
+    if (!enforce) return NextResponse.next()
+    const isNavigation =
+      method === 'GET' &&
+      (request.headers.get('sec-fetch-mode') === 'navigate' ||
+        (request.headers.get('accept') || '').includes('text/html'))
+    if (!isNavigation) return NextResponse.next()
+    // ループ防止（堅牢版）: 直近で SSO を1回試みた印（短命 cookie）があれば再リダイレクトしない。
+    //   SSO 失敗で /?sso_error= に戻った後、アプリが別パス（例 / → /pdfs）へ内部リダイレクトすると
+    //   クエリが消えて再び未認証ナビゲーションになる。クエリ依存では防げないため cookie で止める。
+    //   この cookie は callback 成功時に消える。60 秒で失効し、その後は再試行できる。
+    if (request.cookies.get('wh_sso_attempt')) return NextResponse.next()
+    const pageAuth = await verifyGate(effectiveAuth)
+    if (pageAuth.ok) return NextResponse.next()
+    const loginUrl = new URL('/auth/login', request.nextUrl.origin)
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
+    console.warn(
+      `${LOG_PREFIX} page-redirect path=${pathname} reason=${pageAuth.reason} -> /auth/login`,
+    )
+    const res = NextResponse.redirect(loginUrl, { status: 302 })
+    res.cookies.set('wh_sso_attempt', '1', {
+      httpOnly: true,
+      secure: request.nextUrl.hostname !== 'localhost' && request.nextUrl.hostname !== '127.0.0.1',
+      sameSite: 'lax',
+      maxAge: 60,
+      path: '/',
+    })
+    return res
+  }
 
   const result = await verifyGate(effectiveAuth)
 
@@ -76,11 +115,19 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   return NextResponse.next()
 }
 
-// 監査で無認証だった主要 API（/api/v1 配下）にのみゲートを掛ける。
-// 意図的に対象外:
-//   - /dl/*           … エンドユーザーが LINE から開く公開 DL（短縮URL/landing）。認証を掛けない。
+// 対象:
+//   - /api/v1/*  … 監査で無認証だった主要 API（従来どおりゲート）。
+//   - ページ全般 … enforce 時のみ、未認証ナビゲーションを SSO へ救済する（監視時は素通し）。
+// 意図的に対象外（matcher で除外＝ループ・公開導線の保護）:
+//   - /_next/*・favicon・静的アセット … フレームワーク/静的配信。
+//   - /dl/*           … エンドユーザーが LINE から開く公開 DL（短縮URL/landing）。認証不要。
 //   - /api/webhook/*  … LINE 署名検証で別途保護済み。
 //   - /api/cron/*     … CRON_SECRET の Bearer で別途保護済み。
+//   - /api/auth/*・/auth/* … SSO の入口/着地。リダイレクト対象にするとループする。
+// matcher は prefix の negative lookahead のみ（Next.js の制約。拡張子等の複雑な正規表現は不可）。
+// 静的アセット（favicon・画像・css/js）はこの matcher に一致しうるが、コード側で
+// 「ページの GET ナビゲーションのみリダイレクト」するため実害は無い（Accept が text/html でない
+// 静的取得・API fetch は素通し）。
 export const config = {
-  matcher: ['/api/v1/:path*'],
+  matcher: ['/((?!_next/|api/webhook|api/cron|api/auth|auth/|dl/).*)'],
 }
