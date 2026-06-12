@@ -56,9 +56,17 @@ export async function GET(request: NextRequest) {
     return fail('not_configured')
   }
 
-  // redirect_uri バインド照合用: 発行時にバインドされた「自分自身の callback URL」を再構築する
-  // （query を含めない origin + pathname。authorize / login が指定する値と一致させる）。
-  const redirectUri = `${url.origin}${url.pathname}`
+  // ログイン後の戻り先（同一オリジンのパスのみ。オープンリダイレクト防止）。
+  const nextRaw = url.searchParams.get('next')
+  const next =
+    nextRaw && nextRaw.startsWith('/') && !nextRaw.startsWith('//') ? nextRaw : '/'
+
+  // redirect_uri バインド照合用: 発行時にバインドされた「自分自身の callback URL」を再構築する。
+  //   - /auth/login 経由は ?next= を含む callback URL を提示しているため、code を除いた現在 URL
+  //     （?next= は保持）と一致する。ランチャー authorize 経由（?next= 無し）は origin+pathname と一致。
+  const boundUri = new URL(url.toString())
+  boundUri.searchParams.delete('code')
+  const redirectUri = boundUri.toString()
 
   // --- one-time code を JWT に交換（server-to-server）---
   let accessToken: string
@@ -97,9 +105,9 @@ export async function GET(request: NextRequest) {
     return fail(gate.reason)
   }
 
-  // --- wh_token cookie を張ってトップへ 303 ---
+  // --- wh_token cookie を張って戻り先（next・既定 /）へ 303 ---
   const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1'
-  const response = NextResponse.redirect(`${url.origin}/`, { status: 303 })
+  const response = NextResponse.redirect(`${url.origin}${next}`, { status: 303 })
   response.cookies.set(WH_TOKEN_COOKIE, accessToken, {
     httpOnly: true,
     secure: !isLocalhost,

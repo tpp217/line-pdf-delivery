@@ -35,6 +35,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const enforce = isAuthEnforced()
   const { pathname } = request.nextUrl
   const method = request.method
+  const isApi = pathname.startsWith('/api/v1/')
 
   // トークンの取得元は 2 系統:
   //   1. Authorization: Bearer ヘッダ（server-to-server / API クライアント）
@@ -45,6 +46,32 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const cookieToken = request.cookies.get('wh_token')?.value
   const effectiveAuth =
     headerAuth ?? (cookieToken ? `Bearer ${cookieToken}` : null)
+
+  // --- ページ（非 API）の自動 SSO 救済 ---
+  // enforce 時、未認証のブラウザがページを直接開いた（ブックマーク/直リンク）場合に、
+  // SSO ログインへ自動で飛ばして wh_token を取得させる（直接アクセス組の移行を自動化）。
+  //   - 監視モード（enforce=off）は一切リダイレクトしない＝従来挙動と完全に同一（非破壊）。
+  //   - リダイレクトはトップレベルのページ遷移（navigate / text/html GET）のみ。
+  //     fetch/XHR（API クライアント）は API 側の 401 で扱う（無限リダイレクトにしない）。
+  //   - ループ防止: 既に sso_error 付きで戻ってきたページは素通し（SSO 失敗→/?sso_error= で
+  //     戻った先で再度リダイレクトするとループするため）。/auth・/api/auth は matcher で除外済み。
+  if (!isApi) {
+    if (!enforce) return NextResponse.next()
+    const isNavigation =
+      method === 'GET' &&
+      (request.headers.get('sec-fetch-mode') === 'navigate' ||
+        (request.headers.get('accept') || '').includes('text/html'))
+    const hasSsoError = request.nextUrl.searchParams.has('sso_error')
+    if (!isNavigation || hasSsoError) return NextResponse.next()
+    const pageAuth = await verifyGate(effectiveAuth)
+    if (pageAuth.ok) return NextResponse.next()
+    const loginUrl = new URL('/auth/login', request.nextUrl.origin)
+    loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
+    console.warn(
+      `${LOG_PREFIX} page-redirect path=${pathname} reason=${pageAuth.reason} -> /auth/login`,
+    )
+    return NextResponse.redirect(loginUrl, { status: 302 })
+  }
 
   const result = await verifyGate(effectiveAuth)
 
@@ -76,11 +103,17 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   return NextResponse.next()
 }
 
-// 監査で無認証だった主要 API（/api/v1 配下）にのみゲートを掛ける。
-// 意図的に対象外:
-//   - /dl/*           … エンドユーザーが LINE から開く公開 DL（短縮URL/landing）。認証を掛けない。
+// 対象:
+//   - /api/v1/*  … 監査で無認証だった主要 API（従来どおりゲート）。
+//   - ページ全般 … enforce 時のみ、未認証ナビゲーションを SSO へ救済する（監視時は素通し）。
+// 意図的に対象外（matcher で除外＝ループ・公開導線の保護）:
+//   - /_next/*・favicon・静的アセット … フレームワーク/静的配信。
+//   - /dl/*           … エンドユーザーが LINE から開く公開 DL（短縮URL/landing）。認証不要。
 //   - /api/webhook/*  … LINE 署名検証で別途保護済み。
 //   - /api/cron/*     … CRON_SECRET の Bearer で別途保護済み。
+//   - /api/auth/*・/auth/* … SSO の入口/着地。リダイレクト対象にするとループする。
 export const config = {
-  matcher: ['/api/v1/:path*'],
+  matcher: [
+    '/((?!_next/|favicon\\.ico|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|css|js|woff2?|map)$|dl/|api/webhook|api/cron|api/auth|auth/).*)',
+  ],
 }
