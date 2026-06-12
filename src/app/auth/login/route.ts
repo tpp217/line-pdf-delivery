@@ -1,6 +1,8 @@
 // GET /auth/login
 //
-// workspace-hub のログイン画面へ誘導する SSO 入口（ランチャーを経由しない直接アクセス用）。
+// workspace-hub の authorize へ誘導する SSO 入口（ランチャーを経由しない直接アクセス用）。
+// workspace-hub にログイン済み（24時間セッション）なら無音で code が発行され再ログイン不要。
+// 未ログインなら authorize が /login へ流す（従来と同じ）。
 // ログイン成功後は /auth/callback に one-time code 付きで戻り、wh_token セッションが確立する。
 // 既にランチャーでログイン済みのブラウザなら、authorize 経由（ランチャーのリンク）で
 // 再ログインなしに着地するため、この入口は主に直接アクセス・ブックマーク用。
@@ -21,7 +23,7 @@ export async function GET(request: NextRequest) {
   const callback = new URL('/auth/callback', url.origin)
   if (next !== '/') callback.searchParams.set('next', next)
   return NextResponse.redirect(
-    `${AUTH_ORIGIN}/login?redirect_uri=${encodeURIComponent(callback.toString())}`,
+    `${AUTH_ORIGIN}/api/auth/sso/authorize?redirect_uri=${encodeURIComponent(callback.toString())}`,
     { status: 302 },
   )
 }
