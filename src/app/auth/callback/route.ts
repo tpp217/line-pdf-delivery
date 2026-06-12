@@ -116,5 +116,7 @@ export async function GET(request: NextRequest) {
     maxAge: expiresIn,
     path: '/',
   })
+  // SSO 試行印（proxy のループ防止 cookie）を消す。次回からは wh_token で認証される。
+  response.cookies.set('wh_sso_attempt', '', { maxAge: 0, path: '/' })
   return response
 }

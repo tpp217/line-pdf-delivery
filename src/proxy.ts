@@ -61,8 +61,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       method === 'GET' &&
       (request.headers.get('sec-fetch-mode') === 'navigate' ||
         (request.headers.get('accept') || '').includes('text/html'))
-    const hasSsoError = request.nextUrl.searchParams.has('sso_error')
-    if (!isNavigation || hasSsoError) return NextResponse.next()
+    if (!isNavigation) return NextResponse.next()
+    // ループ防止（堅牢版）: 直近で SSO を1回試みた印（短命 cookie）があれば再リダイレクトしない。
+    //   SSO 失敗で /?sso_error= に戻った後、アプリが別パス（例 / → /pdfs）へ内部リダイレクトすると
+    //   クエリが消えて再び未認証ナビゲーションになる。クエリ依存では防げないため cookie で止める。
+    //   この cookie は callback 成功時に消える。60 秒で失効し、その後は再試行できる。
+    if (request.cookies.get('wh_sso_attempt')) return NextResponse.next()
     const pageAuth = await verifyGate(effectiveAuth)
     if (pageAuth.ok) return NextResponse.next()
     const loginUrl = new URL('/auth/login', request.nextUrl.origin)
@@ -70,7 +74,15 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     console.warn(
       `${LOG_PREFIX} page-redirect path=${pathname} reason=${pageAuth.reason} -> /auth/login`,
     )
-    return NextResponse.redirect(loginUrl, { status: 302 })
+    const res = NextResponse.redirect(loginUrl, { status: 302 })
+    res.cookies.set('wh_sso_attempt', '1', {
+      httpOnly: true,
+      secure: request.nextUrl.hostname !== 'localhost' && request.nextUrl.hostname !== '127.0.0.1',
+      sameSite: 'lax',
+      maxAge: 60,
+      path: '/',
+    })
+    return res
   }
 
   const result = await verifyGate(effectiveAuth)
