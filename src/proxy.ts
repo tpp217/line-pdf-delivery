@@ -123,11 +123,12 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 //   - /dl/*           … エンドユーザーが LINE から開く公開 DL（短縮URL/landing）。認証不要。
 //   - /api/webhook/*  … LINE 署名検証で別途保護済み。
 //   - /api/cron/*     … CRON_SECRET の Bearer で別途保護済み。
+//   - /api/directory/* … 名簿同期。SSO_EXCHANGE_SECRET の Bearer で別途保護済み（cron と同類）。
 //   - /api/auth/*・/auth/* … SSO の入口/着地。リダイレクト対象にするとループする。
 // matcher は prefix の negative lookahead のみ（Next.js の制約。拡張子等の複雑な正規表現は不可）。
 // 静的アセット（favicon・画像・css/js）はこの matcher に一致しうるが、コード側で
 // 「ページの GET ナビゲーションのみリダイレクト」するため実害は無い（Accept が text/html でない
 // 静的取得・API fetch は素通し）。
 export const config = {
-  matcher: ['/((?!_next/|api/webhook|api/cron|api/auth|auth/|dl/).*)'],
+  matcher: ['/((?!_next/|api/webhook|api/cron|api/directory|api/auth|auth/|dl/).*)'],
 }

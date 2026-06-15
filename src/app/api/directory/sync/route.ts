@@ -6,6 +6,11 @@ import crypto from 'node:crypto'
 // 認証: Authorization: Bearer <SSO_EXCHANGE_SECRET>（サーバー間。ロスターAPI と同じ秘密で保護）。
 // トリガは運用者 or cron（このアプリのフロントには名簿管理UIが無いため、ボタンではなくエンドポイント方式）。
 // 名簿は将来の担当アサイン等の候補リスト（ログイン未済の人も含む組織名簿）として使う。
+//
+// パスを /api/v1 の外（/api/directory）に置いているのは意図的:
+// proxy.ts の認証ゲート（/api/v1/* を wh_token 必須でブロック）を避けるため。
+// このエンドポイントは自前の SSO_EXCHANGE_SECRET Bearer で保護するので、
+// /api/cron と同様に matcher で除外している（proxy.ts 参照）。
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
