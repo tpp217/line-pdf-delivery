@@ -14,6 +14,7 @@
 // src/lib/jwt.ts（AccessTokenClaims）と整合させている。
 
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose'
+import type { NextRequest } from 'next/server'
 
 // RS256 固定。発行側（workspace-hub）と同一アルゴリズム前提。
 const ALG = 'RS256'
@@ -50,6 +51,15 @@ export interface GateClaims {
   capabilities: string[]
   systems: string[]
   plan?: string
+  // workspace-hub の JWT が持つ LINE ユーザー ID。提出者の本人解決に使う。
+  line_user_id?: string
+  // デモ/テスト用テナント（auth_core.tenants.is_demo）なら true。実テナント（未付与/false）では
+  // フロントが画面のモック/シード表示を抑止し初期状態を出す（表示制御のヒント・認可境界ではない）。
+  is_demo?: boolean
+  // 表示用 additive claim（workspace-hub が付与）。本人氏名 / テナント名 / 主所属の部署名。
+  name?: string
+  tenant_name?: string
+  department?: string
 }
 
 export type GateResult =
@@ -97,6 +107,17 @@ function toClaims(payload: JWTPayload): GateClaims {
         )
       : [],
     plan: typeof payload.plan === 'string' ? payload.plan : undefined,
+    line_user_id:
+      typeof payload.line_user_id === 'string'
+        ? payload.line_user_id
+        : undefined,
+    // additive claims（無くても壊れない。未付与は false/undefined のまま）。
+    is_demo: payload.is_demo === true,
+    name: typeof payload.name === 'string' ? payload.name : undefined,
+    tenant_name:
+      typeof payload.tenant_name === 'string' ? payload.tenant_name : undefined,
+    department:
+      typeof payload.department === 'string' ? payload.department : undefined,
   }
 }
 
@@ -136,6 +157,27 @@ export async function verifyGate(
   }
 
   return { ok: true, claims }
+}
+
+// SSO ログイン済みブラウザが張る HttpOnly cookie 名（/auth/callback が張る）。
+// proxy.ts が Bearer へ橋渡しするのと同じ cookie をサーバ側でも参照する。
+const WH_TOKEN_COOKIE = 'wh_token'
+
+/**
+ * NextRequest から有効な claims を取り出す（取れなければ null）。
+ *
+ * Authorization: Bearer ヘッダを優先し、無ければ wh_token cookie を
+ * Bearer トークンとして扱う（proxy.ts と同じ橋渡しをサーバ側で行う）。
+ * verifyGate が ok のときだけ claims を返し、それ以外は null。
+ */
+export async function getRequestClaims(
+  req: NextRequest,
+): Promise<GateClaims | null> {
+  const whToken = req.cookies.get(WH_TOKEN_COOKIE)?.value
+  const effectiveAuth =
+    req.headers.get('authorization') ?? (whToken ? `Bearer ${whToken}` : null)
+  const result = await verifyGate(effectiveAuth)
+  return result.ok ? result.claims : null
 }
 
 /**

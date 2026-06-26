@@ -11,10 +11,18 @@ const navItems = [
   { href: "/history", label: "送信履歴" },
 ];
 
+// /api/whoami が返す identity（表示に使う分だけ）。未取得・未付与は null。
+type WhoAmI = {
+  tenant_name: string | null;
+  name: string | null;
+  department: string | null;
+};
+
 export default function Header() {
   const pathname = usePathname();
   const [time, setTime] = useState("");
   const [embedded, setEmbedded] = useState(false);
+  const [who, setWho] = useState<WhoAmI | null>(null);
 
   useEffect(() => {
     setEmbedded(window.self !== window.top);
@@ -27,6 +35,29 @@ export default function Header() {
     const t = setInterval(update, 30000);
     return () => clearInterval(t);
   }, []);
+
+  // 起動時に1回だけ /api/whoami を取得し、ヘッダの identity を埋める。
+  // 未認証（401）や取得失敗時は who=null のまま＝何も追加表示しない（非破壊）。
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/whoami", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!alive || !d?.ok) return;
+        setWho({
+          tenant_name: d.tenant_name ?? null,
+          name: d.name ?? null,
+          department: d.department ?? null,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 表示できる identity があるか（テナント名・氏名・部署のいずれか）。
+  const hasIdentity = !!(who && (who.tenant_name || who.name || who.department));
 
   return (
     <header
@@ -83,30 +114,73 @@ export default function Header() {
         </nav>
       </div>
 
-      {!embedded && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 14,
-            fontSize: 11.5,
-            color: "var(--text-3)",
-          }}
-        >
-          <span className="num">{time}</span>
-          <span
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 14,
+          fontSize: 11.5,
+          color: "var(--text-3)",
+        }}
+      >
+        {/* ログイン中の identity（テナント名・氏名・部署）。未取得/未付与なら表示しない。 */}
+        {hasIdentity && who && (
+          <div
             style={{
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
-              gap: 5,
-              color: "var(--text-2)",
+              gap: 8,
+              maxWidth: 320,
+              minWidth: 0,
             }}
           >
-            <span className="dot dot--green" />
-            稼働中
-          </span>
-        </div>
-      )}
+            {who.tenant_name && (
+              <span
+                style={{
+                  fontWeight: 600,
+                  color: "var(--text-2)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={who.tenant_name}
+              >
+                {who.tenant_name}
+              </span>
+            )}
+            {(who.name || who.department) && (
+              <span
+                style={{
+                  color: "var(--text-3)",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={[who.name, who.department].filter(Boolean).join(" / ")}
+              >
+                {[who.name, who.department].filter(Boolean).join(" / ")}
+              </span>
+            )}
+          </div>
+        )}
+
+        {!embedded && (
+          <>
+            <span className="num">{time}</span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
+                color: "var(--text-2)",
+              }}
+            >
+              <span className="dot dot--green" />
+              稼働中
+            </span>
+          </>
+        )}
+      </div>
     </header>
   );
 }
