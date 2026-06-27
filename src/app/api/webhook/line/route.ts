@@ -1,6 +1,12 @@
 import { supabase } from '@/lib/supabase'
+import { DEFAULT_TENANT_ID } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 import crypto from 'crypto'
+
+// テナント分離: LINE Webhook は JWT を持たず、現状チャネルは単一（utinc）。
+// 受信ユーザー/グループの recipient 登録はすべて既定テナント(utinc)に閉じる。
+// 将来テナント別チャネルにする場合は、署名検証に使う channel から tenant を引いて差し替える。
+const WEBHOOK_TENANT_ID = DEFAULT_TENANT_ID
 
 function verifySignature(body: string, signature: string | null, secret: string | undefined): boolean {
   if (!secret) {
@@ -24,6 +30,7 @@ async function nextSortOrder(): Promise<number> {
   const { data } = await supabase
     .from('recipients')
     .select('sortOrder')
+    .eq('tenant_id', WEBHOOK_TENANT_ID)
     .order('sortOrder', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -134,12 +141,13 @@ export async function POST(request: NextRequest) {
       const { data: existing } = await supabase
         .from('recipients')
         .select('id, isActive')
+        .eq('tenant_id', WEBHOOK_TENANT_ID)
         .eq('lineUserId', groupId)
         .maybeSingle()
 
       if (existing) {
         if (!existing.isActive) {
-          await supabase.from('recipients').update({ isActive: true }).eq('id', existing.id)
+          await supabase.from('recipients').update({ isActive: true }).eq('tenant_id', WEBHOOK_TENANT_ID).eq('id', existing.id)
           console.log(`[webhook] Group reactivated: ${groupId}`)
         }
         continue
@@ -147,6 +155,7 @@ export async function POST(request: NextRequest) {
 
       const groupName = sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム'
       const { error } = await supabase.from('recipients').insert({
+        tenant_id: WEBHOOK_TENANT_ID,
         lineUserId: groupId,
         displayName: groupName,
         isActive: true,
@@ -173,12 +182,13 @@ export async function POST(request: NextRequest) {
     const { data: existing } = await supabase
       .from('recipients')
       .select('id, isActive')
+      .eq('tenant_id', WEBHOOK_TENANT_ID)
       .eq('lineUserId', userId)
       .maybeSingle()
 
     if (existing) {
       if (!existing.isActive) {
-        await supabase.from('recipients').update({ isActive: true }).eq('id', existing.id)
+        await supabase.from('recipients').update({ isActive: true }).eq('tenant_id', WEBHOOK_TENANT_ID).eq('id', existing.id)
         console.log(`[webhook] User reactivated: ${userId}`)
       }
       continue
@@ -186,6 +196,7 @@ export async function POST(request: NextRequest) {
 
     const displayName = await fetchUserName(userId, token)
     const { error } = await supabase.from('recipients').insert({
+      tenant_id: WEBHOOK_TENANT_ID,
       lineUserId: userId,
       displayName,
       isActive: true,

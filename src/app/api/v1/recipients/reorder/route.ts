@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 /**
@@ -7,6 +8,9 @@ import { NextRequest } from 'next/server'
  * sortOrder を 1..n に振り直す。
  */
 export async function POST(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const body = await request.json().catch(() => null)
   const ids: string[] = Array.isArray(body?.ids)
     ? body.ids.filter((v: unknown) => typeof v === 'string')
@@ -20,6 +24,7 @@ export async function POST(request: NextRequest) {
     supabase
       .from('recipients')
       .update({ sortOrder: index + 1 })
+      .eq('tenant_id', tenantId)
       .eq('id', id),
   )
 

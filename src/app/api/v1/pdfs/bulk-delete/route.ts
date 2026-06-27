@@ -1,7 +1,11 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 export async function POST(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const body = await request.json()
   const { ids } = body as { ids: string[] }
 
@@ -12,6 +16,7 @@ export async function POST(request: NextRequest) {
   const { data: docs } = await supabase
     .from('pdf_documents')
     .select('id, storageBucket, storagePath')
+    .eq('tenant_id', tenantId)
     .in('id', ids)
 
   if (docs && docs.length > 0) {
@@ -22,6 +27,7 @@ export async function POST(request: NextRequest) {
   const { error } = await supabase
     .from('pdf_documents')
     .update({ deletedAt: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
     .in('id', ids)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })

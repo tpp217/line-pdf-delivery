@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
@@ -6,11 +7,15 @@ type Context = { params: Promise<{ id: string }> }
 /**
  * 送信先に紐付くカテゴリの取得
  */
-export async function GET(_req: NextRequest, ctx: Context) {
+export async function GET(req: NextRequest, ctx: Context) {
+  const tenantId = await resolveTenantId(req)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { id } = await ctx.params
   const { data, error } = await supabase
     .from('category_recipients')
     .select('category_name')
+    .eq('tenant_id', tenantId)
     .eq('recipientId', id)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
@@ -24,6 +29,9 @@ export async function GET(_req: NextRequest, ctx: Context) {
  * Body: { categories: string[] }
  */
 export async function PUT(request: NextRequest, ctx: Context) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { id } = await ctx.params
   const body = await request.json().catch(() => null)
   const categories: string[] = Array.isArray(body?.categories)
@@ -40,13 +48,14 @@ export async function PUT(request: NextRequest, ctx: Context) {
   const { error: delErr } = await supabase
     .from('category_recipients')
     .delete()
+    .eq('tenant_id', tenantId)
     .eq('recipientId', id)
   if (delErr) {
     return Response.json({ error: `削除失敗: ${delErr.message}` }, { status: 500 })
   }
 
   if (categories.length > 0) {
-    const rows = categories.map((c) => ({ category_name: c, recipientId: id }))
+    const rows = categories.map((c) => ({ tenant_id: tenantId, category_name: c, recipientId: id }))
     const { error: insErr } = await supabase.from('category_recipients').insert(rows)
     if (insErr) {
       return Response.json({ error: `登録失敗: ${insErr.message}` }, { status: 500 })

@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { pushMessage } from '@/lib/line'
 import { getOrCreateShortCode } from '@/lib/short-code'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 /**
@@ -26,6 +27,10 @@ import { NextRequest } from 'next/server'
  *   }
  */
 export async function POST(request: NextRequest) {
+  // テナント分離: 宛先・PDF・バッチ・ジョブ・イベントすべてを呼び出し元 tenant に閉じる。
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const body = await request.json()
 
   const pdfIds: string[] = Array.isArray(body?.pdfIds)
@@ -51,6 +56,7 @@ export async function POST(request: NextRequest) {
   const { data: recipients, error: recErr } = await supabase
     .from('recipients')
     .select('id, displayName, lineUserId, isActive')
+    .eq('tenant_id', tenantId)
     .in('id', recipientIds)
 
   if (recErr) {
@@ -63,6 +69,7 @@ export async function POST(request: NextRequest) {
   const { data: pdfs } = await supabase
     .from('pdf_documents')
     .select('id, originalFileName, personName')
+    .eq('tenant_id', tenantId)
     .in('id', pdfIds)
     .is('deletedAt', null)
 
@@ -92,7 +99,7 @@ export async function POST(request: NextRequest) {
   const batchTitle = `PDF送信: ${links.length}件×${recipients.length}宛先`
   const { data: batch, error: batchErr } = await supabase
     .from('send_batches')
-    .insert({ title: batchTitle, status: 'PROCESSING', totalJobs, startedAt: new Date().toISOString() })
+    .insert({ tenant_id: tenantId, title: batchTitle, status: 'PROCESSING', totalJobs, startedAt: new Date().toISOString() })
     .select('id')
     .single()
   if (batchErr || !batch) {
@@ -115,6 +122,7 @@ export async function POST(request: NextRequest) {
       const { data: job } = await supabase
         .from('send_jobs')
         .insert({
+          tenant_id: tenantId,
           sendBatchId: batch.id,
           pdfDocumentId: link.id,
           recipientId: r.id,
@@ -131,8 +139,10 @@ export async function POST(request: NextRequest) {
           await supabase
             .from('send_jobs')
             .update({ status: 'FAILED', errorMessage: '無効化されている宛先' })
+            .eq('tenant_id', tenantId)
             .eq('id', job.id)
           await supabase.from('delivery_events').insert({
+            tenant_id: tenantId,
             sendJobId: job.id,
             eventType: 'FAILED',
             payload: { reason: 'inactive_recipient' },
@@ -155,8 +165,10 @@ export async function POST(request: NextRequest) {
           await supabase
             .from('send_jobs')
             .update({ status: 'SENT', sentAt: new Date().toISOString() })
+            .eq('tenant_id', tenantId)
             .eq('id', job.id)
           await supabase.from('delivery_events').insert({
+            tenant_id: tenantId,
             sendJobId: job.id,
             eventType: 'SENT',
             payload: null,
@@ -165,8 +177,10 @@ export async function POST(request: NextRequest) {
           await supabase
             .from('send_jobs')
             .update({ status: 'FAILED', errorMessage: res.error ?? 'unknown' })
+            .eq('tenant_id', tenantId)
             .eq('id', job.id)
           await supabase.from('delivery_events').insert({
+            tenant_id: tenantId,
             sendJobId: job.id,
             eventType: 'FAILED',
             payload: { error: res.error },
@@ -196,6 +210,7 @@ export async function POST(request: NextRequest) {
       failedJobs: failed,
       completedAt: new Date().toISOString(),
     })
+    .eq('tenant_id', tenantId)
     .eq('id', batch.id)
 
   return Response.json({ success, failed, batchId: batch.id, results })

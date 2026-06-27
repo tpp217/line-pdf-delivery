@@ -1,8 +1,13 @@
 import { supabase } from '@/lib/supabase'
 import { sanitizeLikePattern } from '@/lib/postgrest'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
+  // テナント分離: 呼び出し元の tenant_id 配下のみを返す（解決不能なら fail-closed）。
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { searchParams } = request.nextUrl
   const page = parseInt(searchParams.get('page') || '1')
   const pageSize = parseInt(searchParams.get('pageSize') || '20')
@@ -13,6 +18,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('pdf_documents')
     .select('*', { count: 'exact' })
+    .eq('tenant_id', tenantId)
     .is('deletedAt', null)
     .order('uploadedAt', { ascending: false })
 

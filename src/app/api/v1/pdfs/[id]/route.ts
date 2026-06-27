@@ -1,13 +1,18 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 type Context = { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, ctx: Context) {
+export async function GET(req: NextRequest, ctx: Context) {
+  const tenantId = await resolveTenantId(req)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { id } = await ctx.params
   const { data, error } = await supabase
     .from('pdf_documents')
     .select('*')
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .is('deletedAt', null)
     .maybeSingle()
@@ -18,6 +23,9 @@ export async function GET(_req: NextRequest, ctx: Context) {
 }
 
 export async function PATCH(request: NextRequest, ctx: Context) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { id } = await ctx.params
   const body = await request.json()
   const { companyNameManual, personNameManual } = body
@@ -37,6 +45,7 @@ export async function PATCH(request: NextRequest, ctx: Context) {
   const { data, error } = await supabase
     .from('pdf_documents')
     .update(updates)
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .select()
     .maybeSingle()
@@ -46,12 +55,16 @@ export async function PATCH(request: NextRequest, ctx: Context) {
   return Response.json(data)
 }
 
-export async function DELETE(_req: NextRequest, ctx: Context) {
+export async function DELETE(req: NextRequest, ctx: Context) {
+  const tenantId = await resolveTenantId(req)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { id } = await ctx.params
 
   const { data: doc } = await supabase
     .from('pdf_documents')
     .select('storageBucket, storagePath')
+    .eq('tenant_id', tenantId)
     .eq('id', id)
     .maybeSingle()
 
@@ -62,6 +75,7 @@ export async function DELETE(_req: NextRequest, ctx: Context) {
   const { error } = await supabase
     .from('pdf_documents')
     .update({ deletedAt: new Date().toISOString() })
+    .eq('tenant_id', tenantId)
     .eq('id', id)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })

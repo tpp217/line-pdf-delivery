@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 /**
@@ -27,6 +28,9 @@ import { NextRequest } from 'next/server'
  *   }
  */
 export async function GET(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const sp = request.nextUrl.searchParams
   const recipientId = sp.get('recipientId')
   const status = sp.get('status')
@@ -43,6 +47,7 @@ export async function GET(request: NextRequest) {
        pdf:pdf_documents(originalFileName, personName)`,
       { count: 'exact' },
     )
+    .eq('tenant_id', tenantId)
     .order('createdAt', { ascending: false })
     .range(offset, offset + limit - 1)
 
