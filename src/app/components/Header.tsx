@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { isStandaloneClient } from "@/lib/app-mode";
 
 const navItems = [
   { href: "/pdfs", label: "PDF管理" },
@@ -180,7 +181,91 @@ export default function Header() {
             </span>
           </>
         )}
+
+        {/* 認証アイコン（再ログイン / ログアウト）。iframe 埋め込み時は出さない。 */}
+        {!embedded && <AuthIcons />}
       </div>
     </header>
   );
 }
+
+// 画面右上の認証アイコン（全システム共通の雛形）。文字ラベルは付けずアイコンのみ。
+//   - 再ログイン（↻）: 表示/トークンを最新に刷り直す。
+//       プラットフォーム版 → wh SSO 入口 /auth/login（ログイン済みなら無音で再 mint）。
+//       単体版          → 自前ログイン /login（※単体版ログインは未整備・要実装）。
+//   - ログアウト（⇥）: セッションを破棄して入口へ戻る。
+//       いずれのモードも /auth/signout（wh_token cookie を失効させて入口へ 303）。
+// モード判定はクライアント側 NEXT_PUBLIC_STANDALONE を参照（既定＝プラットフォーム）。
+function AuthIcons() {
+  const standalone = isStandaloneClient();
+  // プラットフォーム版は wh SSO 入口 /auth/login（再ログインなしで無音再 mint）。
+  // 単体版は自前ログイン /login（未整備のため、設置後に要実装）。
+  const reloginHref = standalone ? "/login" : "/auth/login";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      {/* 再ログイン（更新の循環矢印） */}
+      <a
+        href={reloginHref}
+        title="再ログイン"
+        aria-label="再ログイン"
+        style={authIconBtnStyle}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M23 4v6h-6" />
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </svg>
+      </a>
+      {/* ログアウト（退出の矢印）。POST で確実にセッション破棄する */}
+      <form
+        action="/auth/signout"
+        method="post"
+        style={{ margin: 0, display: "inline-flex" }}
+      >
+        <button
+          type="submit"
+          title="ログアウト"
+          aria-label="ログアウト"
+          style={authIconBtnStyle}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+        </button>
+      </form>
+    </div>
+  );
+}
+
+const authIconBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 28,
+  height: 28,
+  borderRadius: 6,
+  border: "1px solid var(--border)",
+  color: "var(--text-2)",
+  background: "transparent",
+  cursor: "pointer",
+  textDecoration: "none",
+};

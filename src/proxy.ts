@@ -21,6 +21,7 @@ import {
   summarizeClaims,
   type GateFailureReason,
 } from '@/lib/auth-gate'
+import { isStandalone } from '@/lib/app-mode'
 
 // 監視ログの接頭辞。Vercel のログで grep しやすくする。
 const LOG_PREFIX = '[auth-gate]'
@@ -32,6 +33,13 @@ function statusFor(reason: GateFailureReason): number {
 }
 
 export async function proxy(request: NextRequest): Promise<NextResponse> {
+  // 単体版（STANDALONE）では wh JWT が存在しない。proxy の役割（wh_token の
+  // 監視ゲート＋未認証ナビの SSO 自動救済）は両方とも wh SSO 前提のため、
+  // 単体版では一切作用させず素通しする（認可は自前ログイン＋固定テナントに委ねる）。
+  //   - これにより AUTH_ENFORCE=on を併用しても自前 API が 401 にならない。
+  //   - フラグ未設定（プラットフォーム版）はこの分岐に入らず従来挙動のまま（後方互換）。
+  if (isStandalone()) return NextResponse.next()
+
   const enforce = isAuthEnforced()
   const { pathname } = request.nextUrl
   const method = request.method

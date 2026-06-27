@@ -16,11 +16,22 @@
 
 import type { NextRequest } from 'next/server'
 import { getRequestClaims } from '@/lib/auth-gate'
+import { isStandalone } from '@/lib/app-mode'
 
-// 現状唯一の利用者 utinc。JWT を持たない経路（webhook / cron / サーバー間 send）の
-// 既定テナント。DEFAULT_TENANT_ID で上書き可（将来テナントが増えた場合の保険）。
+// 単体版（STANDALONE）の固定テナント。単体版は単一顧客＝1 テナントで完結するため、
+// wh JWT（tenant_id claim）が無くてもデータ分離コードがこの固定値で成立する。
+// 単体版で運用する場合は env STANDALONE_TENANT_ID を必ず設定する（未設定なら null＝
+// fail-closed のまま＝クロステナントを返さない）。
+export const STANDALONE_TENANT_ID = process.env.STANDALONE_TENANT_ID || null
+
+// JWT を持たない経路（webhook / cron / サーバー間 send）の既定テナント。
+//   - 単体版（STANDALONE）かつ STANDALONE_TENANT_ID 設定時はそれを優先
+//     （webhook 取込なども単一顧客の固定テナントへ揃える）。
+//   - それ以外は従来どおり env DEFAULT_TENANT_ID、無ければ utinc の固定値（後方互換）。
 export const DEFAULT_TENANT_ID =
-  process.env.DEFAULT_TENANT_ID || '993aba82-bfa2-4fc8-ada9-928e2875120f'
+  (isStandalone() && STANDALONE_TENANT_ID) ||
+  process.env.DEFAULT_TENANT_ID ||
+  '993aba82-bfa2-4fc8-ada9-928e2875120f'
 
 /**
  * ログインユーザーのリクエストから tenant_id を解決する。
@@ -32,6 +43,13 @@ export const DEFAULT_TENANT_ID =
  *   呼び出し側はこれを「クロステナントを返さない」ために空応答 / 401 として扱う。
  */
 export async function resolveTenantId(req: NextRequest): Promise<string | null> {
+  // 単体版（STANDALONE）: wh JWT が無いため固定テナントで解決する。
+  // env STANDALONE_TENANT_ID が設定されていればそれを返し、未設定なら null
+  // （fail-closed）。プラットフォーム版（フラグ未設定）はこの分岐に入らず
+  // 従来どおり JWT の tenant_id claim で解決する（後方互換）。
+  if (isStandalone()) {
+    return STANDALONE_TENANT_ID
+  }
   const claims = await getRequestClaims(req)
   const tid = claims?.tenant_id
   return typeof tid === 'string' && tid.length > 0 ? tid : null
