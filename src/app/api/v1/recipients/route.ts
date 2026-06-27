@@ -1,8 +1,12 @@
 import { supabase } from '@/lib/supabase'
 import { sanitizeLikePattern } from '@/lib/postgrest'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { searchParams } = request.nextUrl
   const keyword = searchParams.get('keyword')
   const isActive = searchParams.get('isActive')
@@ -11,6 +15,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from('recipients')
     .select('*')
+    .eq('tenant_id', tenantId)
     .order('sortOrder', { ascending: true })
     .order('createdAt', { ascending: false })
 
@@ -30,6 +35,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const body = await request.json()
   const { displayName, lineUserId, memo, isActive, isDefault } = body
 
@@ -43,6 +51,7 @@ export async function POST(request: NextRequest) {
   const { data: existing } = await supabase
     .from('recipients')
     .select('id')
+    .eq('tenant_id', tenantId)
     .eq('lineUserId', lineUserId)
     .maybeSingle()
 
@@ -53,10 +62,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // 新規は末尾に追加
+  // 新規は末尾に追加（テナント内の最大 sortOrder の次）
   const { data: maxRow } = await supabase
     .from('recipients')
     .select('sortOrder')
+    .eq('tenant_id', tenantId)
     .order('sortOrder', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -65,6 +75,7 @@ export async function POST(request: NextRequest) {
   const { data, error } = await supabase
     .from('recipients')
     .insert({
+      tenant_id: tenantId,
       displayName,
       lineUserId,
       memo: memo ?? null,

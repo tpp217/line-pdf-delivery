@@ -8,6 +8,10 @@ import { NextRequest, NextResponse } from 'next/server'
  * LINE のアプリ内ブラウザは Content-Disposition: attachment を直接扱えず
  * 「(null)」の読み込みが繰り返されるため、ここではHTMLのランディング
  * ページを返す。実ファイルは /dl/{id}/file が担当する。
+ *
+ * テナント分離の例外（意図的）: これは LINE で配信された受信者が開く公開ダウンロード
+ * リンクで、受信者は JWT/テナント文脈を持たない。アクセス制御は推測不能な
+ * short_code / UUID（capability URL）が担う。したがって tenant_id では絞らない。
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id: rawId } = await ctx.params

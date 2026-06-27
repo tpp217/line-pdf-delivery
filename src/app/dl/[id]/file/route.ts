@@ -7,6 +7,9 @@ type Context = { params: Promise<{ id: string }> }
  * /dl/{id}/file
  * ランディングページ (/dl/{id}) の「ダウンロード」ボタンから飛ぶ実ファイル配信。
  * id は UUID（pdf_documents.id）または短縮コード（short_code）を受け付ける。
+ *
+ * テナント分離の例外（意図的）: 公開ダウンロード（受信者はテナント文脈を持たない）。
+ * アクセス制御は推測不能な short_code / UUID が担うため tenant_id では絞らない。
  */
 export async function GET(_req: NextRequest, ctx: Context) {
   const { id: rawId } = await ctx.params

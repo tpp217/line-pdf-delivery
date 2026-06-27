@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { pushMessage } from '@/lib/line'
+import { DEFAULT_TENANT_ID } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 
 /**
@@ -12,8 +13,16 @@ import { NextRequest } from 'next/server'
  *   {
  *     recipient_ids: string[],   // recipients テーブルの id
  *     text: string,              // 送信する本文（URLなどを含む単純テキスト）
- *     source?: string            // 呼び出し元識別（省略時 "external"）。バッチタイトルに使用
+ *     source?: string,           // 呼び出し元識別（省略時 "external"）。バッチタイトルに使用
+ *     tenant_id?: string         // テナント分離: 対象テナント。省略時は DEFAULT_TENANT_ID(utinc)
  *   }
+ *
+ * テナント分離:
+ *   この入口は JWT を持たないサーバー間呼び出し（template-library など）用。
+ *   宛先の引当・バッチ/ジョブ/イベントの作成はすべて解決した tenant_id に閉じる。
+ *   呼び出し側が tenant_id を渡さない現状（テナント=utinc のみ）では DEFAULT_TENANT_ID
+ *   にフォールバックする＝既存挙動を壊さない。テナントが増えたら呼び出し側で
+ *   x-tenant-id ヘッダ or body.tenant_id を明示する。
  *
  * Returns:
  *   {
@@ -33,6 +42,11 @@ export async function POST(request: NextRequest) {
     ? body.source.trim()
     : 'external'
 
+  // テナント解決: body.tenant_id / x-tenant-id ヘッダ → 無ければ既定(utinc)。
+  const headerTenant = (request.headers.get('x-tenant-id') ?? '').trim()
+  const bodyTenant = typeof body?.tenant_id === 'string' ? body.tenant_id.trim() : ''
+  const tenantId = bodyTenant || headerTenant || DEFAULT_TENANT_ID
+
   if (recipientIds.length === 0) {
     return Response.json({ error: 'recipient_ids は必須です' }, { status: 400 })
   }
@@ -43,6 +57,7 @@ export async function POST(request: NextRequest) {
   const { data: recipients, error } = await supabase
     .from('recipients')
     .select('id, displayName, lineUserId, isActive')
+    .eq('tenant_id', tenantId)
     .in('id', recipientIds)
 
   if (error) {
@@ -58,7 +73,7 @@ export async function POST(request: NextRequest) {
   const batchTitle = `テキスト送信(${source}): ${preview}`
   const { data: batch, error: batchErr } = await supabase
     .from('send_batches')
-    .insert({ title: batchTitle, status: 'PROCESSING', totalJobs, startedAt: new Date().toISOString() })
+    .insert({ tenant_id: tenantId, title: batchTitle, status: 'PROCESSING', totalJobs, startedAt: new Date().toISOString() })
     .select('id')
     .single()
   if (batchErr || !batch) {
@@ -76,6 +91,7 @@ export async function POST(request: NextRequest) {
     const { data: job } = await supabase
       .from('send_jobs')
       .insert({
+        tenant_id: tenantId,
         sendBatchId: batch.id,
         pdfDocumentId: null,
         recipientId: r.id,
@@ -90,8 +106,10 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('send_jobs')
           .update({ status: 'FAILED', errorMessage: '無効化されている宛先' })
+          .eq('tenant_id', tenantId)
           .eq('id', job.id)
         await supabase.from('delivery_events').insert({
+          tenant_id: tenantId,
           sendJobId: job.id,
           eventType: 'FAILED',
           payload: { reason: 'inactive_recipient' },
@@ -113,8 +131,10 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('send_jobs')
           .update({ status: 'SENT', sentAt: new Date().toISOString() })
+          .eq('tenant_id', tenantId)
           .eq('id', job.id)
         await supabase.from('delivery_events').insert({
+          tenant_id: tenantId,
           sendJobId: job.id,
           eventType: 'SENT',
           payload: null,
@@ -123,8 +143,10 @@ export async function POST(request: NextRequest) {
         await supabase
           .from('send_jobs')
           .update({ status: 'FAILED', errorMessage: res.error ?? 'unknown' })
+          .eq('tenant_id', tenantId)
           .eq('id', job.id)
         await supabase.from('delivery_events').insert({
+          tenant_id: tenantId,
           sendJobId: job.id,
           eventType: 'FAILED',
           payload: { error: res.error },
@@ -151,6 +173,7 @@ export async function POST(request: NextRequest) {
       failedJobs: failed,
       completedAt: new Date().toISOString(),
     })
+    .eq('tenant_id', tenantId)
     .eq('id', batch.id)
 
   return Response.json({ success, failed, batchId: batch.id, results })

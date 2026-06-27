@@ -14,6 +14,9 @@ type Context = { params: Promise<{ id: string; filename: string }> }
  *
  * 実際のPDF特定は id（UUID または short_code）でのみ行い、filename
  * パラメータは URL 表示用なのでサーバ側ではバリデーションのみ。
+ *
+ * テナント分離の例外（意図的）: 公開閲覧（受信者はテナント文脈を持たない）。
+ * アクセス制御は推測不能な short_code / UUID が担うため tenant_id では絞らない。
  */
 export async function GET(_req: NextRequest, ctx: Context) {
   const { id: rawId } = await ctx.params

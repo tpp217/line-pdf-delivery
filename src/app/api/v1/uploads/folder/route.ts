@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
 import JSZip from 'jszip'
@@ -56,6 +57,9 @@ async function extractPdfsFromFiles(files: File[]): Promise<{ pdfs: PdfEntry[]; 
 }
 
 export async function POST(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const formData = await request.formData()
   const files = formData.getAll('files') as File[]
   const sourceFolderName = formData.get('sourceFolderName') as string | null
@@ -69,6 +73,7 @@ export async function POST(request: NextRequest) {
   const { data: batch, error: batchErr } = await supabase
     .from('pdf_upload_batches')
     .insert({
+      tenant_id: tenantId,
       batchName: sourceFolderName || `アップロード ${new Date().toLocaleString('ja-JP')}`,
       sourceFolderName: sourceFolderName || null,
       totalFiles,
@@ -100,13 +105,17 @@ export async function POST(request: NextRequest) {
 
     const { data: person } = await supabase
       .from('persons')
-      .upsert({ name: personName }, { onConflict: 'name' })
+      .upsert(
+        { tenant_id: tenantId, name: personName },
+        { onConflict: 'tenant_id,name' },
+      )
       .select('id')
       .single()
 
     const { data: doc, error: docErr } = await supabase
       .from('pdf_documents')
       .insert({
+        tenant_id: tenantId,
         uploadBatchId: batch.id,
         originalFileName: pdf.name,
         storageBucket: 'pdfs',

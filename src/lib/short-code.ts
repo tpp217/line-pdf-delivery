@@ -5,6 +5,10 @@ const nanoid = customAlphabet('0123456789abcdefghijklmnopqrstuvwxyz', 6)
 
 /**
  * PDFのshort_codeを取得（既存があればそれを返す、なければ生成して保存）
+ *
+ * テナント分離: 引数 pdfId は呼び出し元（pdfs/send 等）が既に呼び出し元 tenant に
+ * スコープして引当済みの id を渡す前提。ここでは id でのみ操作する（生成する short_code は
+ * 推測不能な公開アクセス token なのでテナント横断の漏洩源にはならない）。
  */
 export async function getOrCreateShortCode(pdfId: string): Promise<string> {
   // 既存コードがあればそのまま返す

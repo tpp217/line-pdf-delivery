@@ -1,4 +1,6 @@
 import { supabase } from '@/lib/supabase'
+import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
+import { NextRequest } from 'next/server'
 
 /**
  * カテゴリ↔送信先の紐付け一覧
@@ -6,10 +8,14 @@ import { supabase } from '@/lib/supabase'
  * Returns:
  *   { items: [{ category: string, recipientIds: string[] }] }
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const tenantId = await resolveTenantId(request)
+  if (!tenantId) return unauthenticatedTenant()
+
   const { data, error } = await supabase
     .from('category_recipients')
     .select('category_name, recipientId')
+    .eq('tenant_id', tenantId)
 
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
