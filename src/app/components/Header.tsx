@@ -192,14 +192,15 @@ export default function Header() {
 // 画面右上の認証アイコン（全システム共通の雛形）。文字ラベルは付けずアイコンのみ。
 //   - 再ログイン（↻）: 表示/トークンを最新に刷り直す。
 //       プラットフォーム版 → wh SSO 入口 /auth/login（ログイン済みなら無音で再 mint）。
-//       単体版          → 自前ログイン /login（※単体版ログインは未整備・要実装）。
+//       単体版          → 自前ログイン /login（Supabase Auth）。
 //   - ログアウト（⇥）: セッションを破棄して入口へ戻る。
-//       いずれのモードも /auth/signout（wh_token cookie を失効させて入口へ 303）。
+//       プラットフォーム版 → /auth/signout（wh_token cookie を失効させて入口へ 303）。
+//       単体版          → /auth/signout（加えて Supabase Auth を signOut）。
 // モード判定はクライアント側 NEXT_PUBLIC_STANDALONE を参照（既定＝プラットフォーム）。
 function AuthIcons() {
   const standalone = isStandaloneClient();
   // プラットフォーム版は wh SSO 入口 /auth/login（再ログインなしで無音再 mint）。
-  // 単体版は自前ログイン /login（未整備のため、設置後に要実装）。
+  // 単体版は自前ログイン /login（Supabase Auth）。
   const reloginHref = standalone ? "/login" : "/auth/login";
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

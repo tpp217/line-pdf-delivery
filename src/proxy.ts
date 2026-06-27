@@ -22,6 +22,7 @@ import {
   type GateFailureReason,
 } from '@/lib/auth-gate'
 import { isStandalone } from '@/lib/app-mode'
+import { createAuthServerClient } from '@/lib/supabase-auth'
 
 // 監視ログの接頭辞。Vercel のログで grep しやすくする。
 const LOG_PREFIX = '[auth-gate]'
@@ -32,13 +33,77 @@ function statusFor(reason: GateFailureReason): number {
   return reason === 'system_forbidden' ? 403 : 401
 }
 
+// 単体版（STANDALONE）の自前ログインゲート。
+//
+// プラットフォーム版（STANDALONE 未設定）はこの関数を一切呼ばない＝従来挙動のまま（後方互換）。
+//
+// 仕組み:
+//   - Supabase Auth のセッション cookie を検証し、無ければアクセスを止める。
+//   - ページ（ナビゲーション GET）は /login へ 302、API（fetch/XHR）は 401 JSON
+//     （XHR を HTML ログインへ飛ばさない）。プラットフォームの SSO 救済と同じ住み分け。
+//   - /login 自体・SSO 入口は除外（ログインの入口を塞がない／ループさせない）。
+//   - セッションが有効なら、@supabase/ssr が refresh で払い出す cookie を載せて素通し。
+//
+// matcher（ファイル末尾）で _next・dl・webhook・cron・directory・auth は既に除外済み。
+// ここでは matcher を通過したリクエスト（ページ全般・/api/v1・/api/whoami・/login）を見る。
+async function standaloneGate(request: NextRequest): Promise<NextResponse> {
+  const { pathname } = request.nextUrl
+  const method = request.method
+
+  // /login と自前認証 API はゲート対象外（入口とログイン処理を素通し）。
+  if (pathname === '/login' || pathname.startsWith('/api/auth/')) {
+    return NextResponse.next()
+  }
+
+  // セッション検証＋（必要なら）cookie refresh。検証に通れば cookie を載せて素通し、
+  // 通らなければ未認証として下で扱う。env 未設定（client 生成失敗）は「未設定だから
+  // 止める」のではなく安全側に倒し未認証扱い（fail-closed）。
+  const response = NextResponse.next()
+  let authed = false
+  try {
+    const supabase = createAuthServerClient({
+      getAll: () =>
+        request.cookies.getAll().map((c) => ({ name: c.name, value: c.value })),
+      setAll: (toSet) => {
+        for (const { name, value, options } of toSet) {
+          response.cookies.set(name, value, options)
+        }
+      },
+    })
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    authed = !!user
+  } catch {
+    authed = false
+  }
+
+  if (authed) return response
+
+  // 未認証。API は 401 JSON、ページ（ナビゲーション）は /login へ。
+  const isApi = pathname.startsWith('/api/')
+  const isNavigation =
+    method === 'GET' &&
+    (request.headers.get('sec-fetch-mode') === 'navigate' ||
+      (request.headers.get('accept') || '').includes('text/html'))
+
+  if (isApi || !isNavigation) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const loginUrl = new URL('/login', request.nextUrl.origin)
+  loginUrl.searchParams.set('next', pathname + request.nextUrl.search)
+  console.warn(
+    `${LOG_PREFIX} standalone-redirect path=${pathname} (no session) -> /login`,
+  )
+  return NextResponse.redirect(loginUrl, { status: 302 })
+}
+
 export async function proxy(request: NextRequest): Promise<NextResponse> {
-  // 単体版（STANDALONE）では wh JWT が存在しない。proxy の役割（wh_token の
-  // 監視ゲート＋未認証ナビの SSO 自動救済）は両方とも wh SSO 前提のため、
-  // 単体版では一切作用させず素通しする（認可は自前ログイン＋固定テナントに委ねる）。
-  //   - これにより AUTH_ENFORCE=on を併用しても自前 API が 401 にならない。
-  //   - フラグ未設定（プラットフォーム版）はこの分岐に入らず従来挙動のまま（後方互換）。
-  if (isStandalone()) return NextResponse.next()
+  // 単体版（STANDALONE）: wh JWT は存在しないため wh ゲートは使わず、自前ログイン
+  // （Supabase Auth）でアクセスを保護する。プラットフォーム版（フラグ未設定）は
+  // この分岐に入らず、以下の wh ゲート（従来挙動）のまま（後方互換）。
+  if (isStandalone()) return standaloneGate(request)
 
   const enforce = isAuthEnforced()
   const { pathname } = request.nextUrl
