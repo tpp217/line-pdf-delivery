@@ -21,6 +21,7 @@ import {
   summarizeClaims,
   type GateFailureReason,
 } from '@/lib/auth-gate'
+import { isCapEnforced, missingCapability } from '@/lib/cap-gate'
 import { isStandalone } from '@/lib/app-mode'
 import { createAuthServerClient } from '@/lib/supabase-auth'
 
@@ -166,6 +167,30 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
       `${LOG_PREFIX} ok method=${method} path=${pathname} enforce=${enforce}`,
       summarizeClaims(result.claims),
     )
+
+    // --- capability ゲート（二段目・検証済み claims があるときのみ） ---
+    // JWT の capabilities[] で操作単位の権限を判定する。AUTH_ENFORCE（systems[] ゲート）
+    // とは独立で、CAP_ENFORCE="on" のときだけ不足時に 403 でブロックする。
+    // それ以外（未設定含む）は [cap-monitor] の warn ログのみ（監視モード・素通し）。
+    // 検証済み claims が無いリクエスト（上の result.ok=false → 監視素通し）は対象外。
+    const missing = missingCapability(
+      result.claims.capabilities,
+      method,
+      pathname,
+    )
+    if (missing) {
+      const user = result.claims.sub ?? 'unknown'
+      if (isCapEnforced()) {
+        console.warn(
+          `[cap-gate] blocked missing=${missing} method=${method} path=${pathname} user=${user}`,
+        )
+        return NextResponse.json(
+          { error: `この操作の権限（${missing}）がありません。` },
+          { status: 403 },
+        )
+      }
+      console.warn(`[cap-monitor] missing=${missing} path=${pathname} user=${user}`)
+    }
     return NextResponse.next()
   }
 

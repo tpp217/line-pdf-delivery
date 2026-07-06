@@ -60,6 +60,9 @@ export interface GateClaims {
   name?: string
   tenant_name?: string
   department?: string
+  // 数量上限 claim（workspace-hub が付与。キーは "<system>.<resourceKey>"・値は数値）。
+  // 参照は cap-gate の limitFor() 経由で行う（無い場合は無制限扱い）。
+  limits?: Record<string, unknown>
 }
 
 export type GateResult =
@@ -118,6 +121,13 @@ function toClaims(payload: JWTPayload): GateClaims {
       typeof payload.tenant_name === 'string' ? payload.tenant_name : undefined,
     department:
       typeof payload.department === 'string' ? payload.department : undefined,
+    // 数量上限 claim。プレーンなオブジェクトのときだけ受け取る（値の数値検証は limitFor が行う）。
+    limits:
+      payload.limits &&
+      typeof payload.limits === 'object' &&
+      !Array.isArray(payload.limits)
+        ? (payload.limits as Record<string, unknown>)
+        : undefined,
   }
 }
 
