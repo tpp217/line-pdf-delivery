@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { DEFAULT_TENANT_ID } from '@/lib/tenant'
-import { NextRequest } from 'next/server'
+import { NextRequest, after } from 'next/server'
 import crypto from 'crypto'
 
 // テナント分離: LINE Webhook は JWT を持たず、現状チャネルは単一（utinc）。
@@ -67,6 +67,10 @@ async function fetchUserName(userId: string, token: string): Promise<string> {
 // LINE チャネルは workflow-system と共有しており、Webhook は当アプリが専有しているため、
 // 当アプリでは扱わない postback（業務フローの承認操作など）だけを転送して肩代わりする。
 // 設定（URL/シークレット）が無ければ何もしない＝当アプリ単体の動作は一切変わらない。
+//
+// 呼び出しは after() で「応答返却後」に実行する（fire-and-forget）。転送先(workflow)の
+// 承認処理は DB/LINE API を叩いて時間がかかり、同期 await すると LINE への 200 応答が遅れ
+// webhook タイムアウト → 再送 → 承認通知の氾濫を招くため。転送失敗はログのみ（catch 済み）。
 async function forwardPostbackToWorkflow(event: {
   source?: { userId?: string }
   postback?: { data?: string }
@@ -124,7 +128,9 @@ export async function POST(request: NextRequest) {
     // postback（業務フローの承認操作など）は当システムでは扱わず workflow-system へ転送する。
     // 従来 postback は実質無処理だったため、既存の recipient 登録フローには影響しない。
     if (event.type === 'postback') {
-      await forwardPostbackToWorkflow(event)
+      // 応答をブロックしない（after で応答返却後に転送）。LINE へは即 200 を返し、
+      // タイムアウト起因の webhook 再送を防ぐ。
+      after(forwardPostbackToWorkflow(event))
       continue
     }
 
