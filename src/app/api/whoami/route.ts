@@ -39,5 +39,8 @@ export async function GET(req: NextRequest) {
     name: claims.name ?? null,
     tenant_name: claims.tenant_name ?? null,
     department: claims.department ?? null,
+    // 選択中（または home）の部署 ID（UUID・未付与なら null）。部署既定フィルタの基準用に
+    // 受け渡すが、業務データに department 次元が無いため現状フィルタには未使用。
+    department_id: claims.department_id ?? null,
   })
 }
