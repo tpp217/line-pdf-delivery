@@ -7,6 +7,23 @@ export const metadata: Metadata = {
   description: "PDF一括取り込み・LINE個別配信システム",
 };
 
+// テーマ初期化（FOUC防止のため最優先で実行し、CSS適用前に data-* 属性を確定させる）
+// WorkLedger design-spec §12.4 準拠のキー名（wl_theme_mode / wl_color_scheme）を使用。
+const THEME_INIT_SCRIPT = `
+(function () {
+  try {
+    var theme = localStorage.getItem('wl_theme_mode');
+    if (theme !== 'light' && theme !== 'dark') {
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    var scheme = localStorage.getItem('wl_color_scheme');
+    if (scheme !== 'default' && scheme !== 'heroui') scheme = 'default';
+    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-color-scheme', scheme);
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -15,6 +32,7 @@ export default function RootLayout({
   return (
     <html lang="ja" className="h-full">
       <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
