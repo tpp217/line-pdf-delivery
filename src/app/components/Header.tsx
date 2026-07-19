@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { isStandaloneClient } from "@/lib/app-mode";
+import ThemeToggle from "./ThemeToggle";
 
 const navItems = [
   { href: "/pdfs", label: "PDF管理" },
@@ -184,6 +185,8 @@ export default function Header() {
 
         {/* 認証アイコン（再ログイン / ログアウト）。iframe 埋め込み時は出さない。 */}
         {!embedded && <AuthIcons />}
+        {/* テーマコントロール: カラースキーム（既定／HeroUI風）・ライトダーク切替 */}
+        {!embedded && <ThemeToggle />}
       </div>
     </header>
   );

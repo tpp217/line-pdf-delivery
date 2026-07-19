@@ -43,7 +43,143 @@
   --font-sans:       "Inter", "Noto Sans JP", -apple-system, BlinkMacSystemFont,
                      "Hiragino Kaku Gothic ProN", "Yu Gothic Medium", sans-serif;
   --font-mono:       "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-full: 999px;
 }
+
+/* ============================================
+   カラースキーム（WorkLedger design-spec §12.2 準拠）
+   data-color-scheme="default"（既定・変更なし） | "heroui"
+   ============================================ */
+:root[data-color-scheme="heroui"] {
+  --blue:        #6D4EF5;
+  --blue-2:      #5A3BE0;
+  --blue-soft:   #EFEAFE;
+  --blue-border: #D5C8FC;
+  --purple:      #7828C8;
+  --purple-soft: #F2E8FC;
+
+  /* heroui選択時のみ角丸・影を拡張（§12.3）。defaultはv1.0のまま */
+  --radius-sm: 8px;
+  --radius:    12px;
+  --radius-lg: 16px;
+}
+
+/* ============================================
+   ダークモード（WorkLedger design-spec §12.2 準拠）
+   data-theme="dark"（既定は light）
+   ============================================ */
+:root[data-theme="dark"] {
+  --bg:              #0E1015;
+  --surface:         #16181F;
+  --surface-2:       #1C1F27;
+  --surface-3:       #262A34;
+  --border:          #2A2E38;
+  --border-strong:   #3A3F4B;
+  --text:            #F2F4F7;
+  --text-2:          #B4BAC5;
+  --text-3:          #838B99;
+  --text-mute:       #565D6A;
+
+  --blue:        #5B9DFF;
+  --blue-2:      #7EB1FF;
+  --blue-soft:   rgba(91, 157, 255, 0.16);
+  --blue-border: rgba(91, 157, 255, 0.38);
+
+  --green:       #34D399;
+  --green-soft:  rgba(52, 211, 153, 0.14);
+  --amber:       #FBBF24;
+  --amber-soft:  rgba(251, 191, 36, 0.14);
+  --red:         #F87171;
+  --red-soft:    rgba(248, 113, 113, 0.14);
+  --purple:      #A78BFA;
+  --purple-soft: rgba(167, 139, 250, 0.14);
+}
+:root[data-theme="dark"][data-color-scheme="heroui"] {
+  --blue:        #9385FF;
+  --blue-2:      #AA9EFF;
+  --blue-soft:   rgba(147, 133, 255, 0.2);
+  --blue-border: rgba(147, 133, 255, 0.42);
+}
+
+body {
+  transition: background-color .2s ease, color .2s ease;
+}
+
+/* ============================================
+   herouiスキーム限定の形状拡張（§12.3）
+   default×lightの見た目は一切変更しない
+   ============================================ */
+:root[data-color-scheme="heroui"] .card {
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .15s, transform .15s;
+}
+:root[data-color-scheme="heroui"] .btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+:root[data-color-scheme="heroui"] .chip {
+  border-radius: var(--radius-full);
+}
+:root[data-color-scheme="heroui"] .chip.is-active {
+  box-shadow: var(--shadow-sm);
+}
+
+/* ============================================
+   テーマコントロール
+   ============================================ */
+.theme-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.scheme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  background: var(--surface-2);
+  border-radius: var(--radius-full);
+}
+.scheme-btn {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .12s, transform .12s;
+}
+.scheme-btn:hover { transform: scale(1.08); }
+.scheme-btn.active { border-color: var(--text); }
+.scheme-btn[data-scheme="default"] { background: linear-gradient(135deg, #2563EB, #1D4ED8); }
+.scheme-btn[data-scheme="heroui"]  { background: linear-gradient(135deg, #6D4EF5, #7828C8); }
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  background: transparent;
+  cursor: pointer;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.theme-toggle-btn:hover {
+  color: var(--text);
+  border-color: var(--text-3);
+  background: var(--surface-2);
+}
+.theme-toggle-btn .icon-sun { display: none; }
+.theme-toggle-btn .icon-moon { display: inline-flex; }
+:root[data-theme="dark"] .theme-toggle-btn .icon-sun { display: inline-flex; }
+:root[data-theme="dark"] .theme-toggle-btn .icon-moon { display: none; }
 
 /* ============================================
    Base
@@ -117,7 +253,7 @@ body {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
   white-space: nowrap;
@@ -177,7 +313,7 @@ body {
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   border: 1px solid transparent;
   white-space: nowrap;
 }
@@ -247,7 +383,7 @@ body {
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   outline: none;
   transition: border-color 0.12s, box-shadow 0.12s;
 }
@@ -359,7 +495,7 @@ body {
   color: var(--text-2);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   cursor: pointer;
   font-family: inherit;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
