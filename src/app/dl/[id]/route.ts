@@ -132,7 +132,16 @@ body {
 .ios-hint__steps { padding-left: 16px; }
 .ios-hint__steps li { margin-bottom: 2px; }
 .err { color: var(--red); font-size: 15px; }
+.op {
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-3); line-height: 1.5;
+}
 `
+
+// 運営者表記: 新ドメイン＋ファイルDLページはセキュリティベンダーにフィッシング誤判定
+// されやすいため、正規サービスと識別できる事業者名を常設する（2026-08 に BrightCloud
+// 誤分類→家庭用フィルタで全面遮断の実害あり）。削除しないこと。
+const OPERATOR_FOOTER = `<p class="op">本ページは uniquetrash.inc が運営する書類配信サービスです。</p>`
 
 function renderLanding(p: {
   id: string
@@ -182,7 +191,7 @@ function renderLanding(p: {
     </div>${iosHint}
     <p class="hint">
       うまく保存できない場合は、ブラウザで開き直してから再度お試しください。
-    </p>
+    </p>${OPERATOR_FOOTER}
   </div>
 </body>
 </html>`
@@ -200,7 +209,7 @@ function renderNotFound(message: string): string {
 <body>
   <div class="card">
     <div class="name err">リンクが見つかりません</div>
-    <div class="meta">${escape(message)}</div>
+    <div class="meta">${escape(message)}</div>${OPERATOR_FOOTER}
   </div>
 </body>
 </html>`
