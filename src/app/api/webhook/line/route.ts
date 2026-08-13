@@ -1,5 +1,12 @@
-import { supabase } from '@/lib/supabase'
 import { DEFAULT_TENANT_ID } from '@/lib/tenant'
+import {
+  fetchGroupMemberName,
+  fetchGroupName,
+  fetchUserName,
+  syncGroupMembers,
+  upsertRecipient,
+  type GroupScope,
+} from '@/lib/recipients'
 import { NextRequest, after } from 'next/server'
 import crypto from 'crypto'
 
@@ -23,114 +30,6 @@ function verifySignature(body: string, signature: string | null, secret: string 
     return crypto.timingSafeEqual(a, b)
   } catch {
     return false
-  }
-}
-
-async function nextSortOrder(): Promise<number> {
-  const { data } = await supabase
-    .from('recipients')
-    .select('sortOrder')
-    .eq('tenant_id', WEBHOOK_TENANT_ID)
-    .order('sortOrder', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  return (data?.sortOrder ?? 0) + 1
-}
-
-async function fetchGroupName(groupId: string, token: string): Promise<string> {
-  try {
-    const res = await fetch(`https://api.line.me/v2/bot/group/${groupId}/summary`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) return 'グループ'
-    const summary = await res.json()
-    return summary.groupName || 'グループ'
-  } catch {
-    return 'グループ'
-  }
-}
-
-async function fetchUserName(userId: string, token: string): Promise<string> {
-  try {
-    const res = await fetch(`https://api.line.me/v2/bot/profile/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!res.ok) return userId
-    const profile = await res.json()
-    return profile.displayName || userId
-  } catch {
-    return userId
-  }
-}
-
-// グループ／ルームのメンバープロフィール。
-// `/v2/bot/profile/{userId}` は「公式アカウントを友だち追加済み」のユーザーしか取れず、
-// グループに追加されただけの人は 404 になって表示名が userId のままになる。
-// メンバープロフィール API は友だち未追加でも取れるので、こちらを先に試す。
-async function fetchGroupMemberName(
-  sourceType: 'group' | 'room',
-  groupId: string,
-  userId: string,
-  token: string,
-): Promise<string> {
-  const scope = sourceType === 'group' ? `group/${groupId}` : `room/${groupId}`
-  try {
-    const res = await fetch(`https://api.line.me/v2/bot/${scope}/member/${userId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (res.ok) {
-      const profile = await res.json()
-      if (profile.displayName) return profile.displayName
-    }
-  } catch {
-    // 握りつぶして下のフォールバックへ
-  }
-  // 友だち追加済みなら 1:1 のプロフィールで取れる。最後は userId のまま登録する。
-  return fetchUserName(userId, token)
-}
-
-// recipients への登録（新規 insert / 無効化されていれば再有効化）。
-// 既存行の displayName は上書きしない（画面で付けた名前を webhook が戻さないため）。
-async function upsertRecipient(opts: {
-  lineUserId: string
-  type: 'user' | 'group' | 'room'
-  resolveName: () => Promise<string>
-  memo?: string
-}): Promise<void> {
-  const { data: existing } = await supabase
-    .from('recipients')
-    .select('id, isActive')
-    .eq('tenant_id', WEBHOOK_TENANT_ID)
-    .eq('lineUserId', opts.lineUserId)
-    .maybeSingle()
-
-  if (existing) {
-    if (!existing.isActive) {
-      await supabase
-        .from('recipients')
-        .update({ isActive: true })
-        .eq('tenant_id', WEBHOOK_TENANT_ID)
-        .eq('id', existing.id)
-      console.log(`[webhook] ${opts.type} reactivated: ${opts.lineUserId}`)
-    }
-    return
-  }
-
-  const displayName = await opts.resolveName()
-  const { error } = await supabase.from('recipients').insert({
-    tenant_id: WEBHOOK_TENANT_ID,
-    lineUserId: opts.lineUserId,
-    displayName,
-    memo: opts.memo ?? null,
-    isActive: true,
-    isDefault: false,
-    type: opts.type,
-    sortOrder: await nextSortOrder(),
-  })
-  if (error) {
-    console.error(`[webhook] ${opts.type} insert failed (${opts.lineUserId}):`, error.message)
-  } else {
-    console.log(`[webhook] ${opts.type} registered: ${displayName} (${opts.lineUserId})`)
   }
 }
 
@@ -162,6 +61,35 @@ async function forwardPostbackToWorkflow(event: {
     })
   } catch (e) {
     console.error('[webhook] workflow postback forward failed:', e)
+  }
+}
+
+// 公式アカウントがグループ／ルームに参加した直後に、そこに「すでに居る」メンバーを取り込む。
+// memberJoined は参加の瞬間にしか飛ばないため、これが無いと参加前からのメンバーは
+// 永久に登録されない。人数分の LINE API 呼び出しになり時間がかかるので after() で
+// 応答返却後に回す（webhook タイムアウト → 再送を避ける）。
+async function backfillGroupMembers(
+  scope: GroupScope,
+  groupId: string,
+  resolveGroupName: () => Promise<string>,
+  token: string,
+): Promise<void> {
+  const groupName = await resolveGroupName()
+  try {
+    const result = await syncGroupMembers({
+      tenantId: WEBHOOK_TENANT_ID,
+      scope,
+      groupId,
+      groupName,
+      token,
+    })
+    console.log(
+      `[webhook] join backfill: ${groupName} (${groupId}) total=${result.total} inserted=${result.inserted} reactivated=${result.reactivated}`,
+    )
+  } catch (e) {
+    // メンバー一覧 API は認証済み／プレミアムアカウント限定（未認証だと 403）。
+    // 取れなくても join 自体は成功させる（以降は memberJoined で1人ずつ増える）。
+    console.error(`[webhook] join backfill failed (${groupId}):`, e)
   }
 }
 
@@ -206,58 +134,76 @@ export async function POST(request: NextRequest) {
     }
 
     const sourceType = event.source?.type
+    const isGroupScope = sourceType === 'group' || sourceType === 'room'
+    const groupId = event.source?.groupId || event.source?.roomId
+
+    // グループ名は「新規 insert する時」と「join の一括取り込み」でしか要らない。
+    // 発言のたびに LINE API を叩かないよう、実際に必要になった 1 回だけ解決する。
+    let cachedGroupName: string | null = null
+    const resolveGroupName = async (): Promise<string> => {
+      if (cachedGroupName === null) {
+        cachedGroupName =
+          sourceType === 'group' && groupId ? await fetchGroupName(groupId, token) : 'ルーム'
+      }
+      return cachedGroupName
+    }
 
     // メンバー参加（memberJoined）＝ 公式アカウントが居るグループ／ルームに人が追加された。
-    // このイベントの source は group／room で `source.userId` を持たない。そのため下の
-    // 「グループ由来」分岐に流すとグループ本体を見るだけで、追加された本人を取りこぼす
-    // （＝新しいユーザーが自動登録されない）。ここで joined.members を個別に登録する。
+    // このイベントの source は group／room で `source.userId` を持たない（追加された本人は
+    // joined.members[] 側に入る）。そのため下の「グループ由来」分岐に流すとグループ本体を
+    // 見るだけで終わり、追加された人はどの分岐でも登録されないまま握りつぶされる。
     if (event.type === 'memberJoined') {
-      const groupId = event.source?.groupId || event.source?.roomId
-      if (!groupId || (sourceType !== 'group' && sourceType !== 'room')) {
+      if (!isGroupScope || !groupId) {
         console.log('[webhook] memberJoined without group/room id, skip')
         continue
       }
 
-      const groupName = sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム'
-
       // グループ本体も従来どおり登録／再有効化する（webhook 導入前から居るグループの取りこぼし対策）
       await upsertRecipient({
+        tenantId: WEBHOOK_TENANT_ID,
         lineUserId: groupId,
         type: sourceType,
-        resolveName: async () => groupName,
+        resolveName: resolveGroupName,
       })
 
       const members: { userId?: string }[] = event.joined?.members || []
-      console.log(`[webhook] memberJoined: ${members.length} member(s) in ${groupName} (${groupId})`)
+      console.log(`[webhook] memberJoined: ${members.length} member(s) in ${groupId}`)
       for (const member of members) {
         const memberId = member?.userId
         if (!memberId) continue
         await upsertRecipient({
+          tenantId: WEBHOOK_TENANT_ID,
           lineUserId: memberId,
           type: 'user',
           resolveName: () => fetchGroupMemberName(sourceType, groupId, memberId, token),
-          memo: `「${groupName}」への参加を検知して自動登録`,
+          memo: `「${await resolveGroupName()}」への参加を検知して自動登録`,
         })
       }
       continue
     }
 
     // グループ／ルーム由来のイベント（join含む）
-    if (sourceType === 'group' || sourceType === 'room') {
-      const groupId = event.source.groupId || event.source.roomId
+    if (isGroupScope) {
       if (!groupId) {
         console.log('[webhook] group event without id, skip')
         continue
       }
 
       await upsertRecipient({
+        tenantId: WEBHOOK_TENANT_ID,
         lineUserId: groupId,
         type: sourceType,
-        resolveName: async () =>
-          sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム',
+        resolveName: resolveGroupName,
       })
-      // グループ／ルーム由来のイベントは、発言者個人を recipient に追加しない
-      // （追加の起点は上の memberJoined だけに限定する）
+
+      // 公式アカウントが新しくグループに参加したときだけ、既存メンバーを一括取り込みする。
+      // （発言などの通常イベントで毎回やるとメンバー数ぶんの API を叩いてしまうため join 限定）
+      if (event.type === 'join') {
+        after(backfillGroupMembers(sourceType, groupId, resolveGroupName, token))
+      }
+
+      // グループ由来の通常イベント（発言など）では、発言者個人は recipient に追加しない。
+      // 個人が増える起点は memberJoined と join 時の一括取り込みだけに限定する。
       continue
     }
 
@@ -269,6 +215,7 @@ export async function POST(request: NextRequest) {
     }
 
     await upsertRecipient({
+      tenantId: WEBHOOK_TENANT_ID,
       lineUserId: userId,
       type: 'user',
       resolveName: () => fetchUserName(userId, token),

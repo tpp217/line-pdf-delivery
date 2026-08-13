@@ -178,6 +178,7 @@ export default function RecipientsPage() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editTarget, setEditTarget] = useState<Recipient | null>(null);
+  const [syncing, setSyncing] = useState(false);
 
   const fetchRecipients = useCallback(async () => {
     setLoading(true);
@@ -260,6 +261,44 @@ export default function RecipientsPage() {
     fetchRecipients();
   };
 
+  // グループに「すでに居る」メンバーの一括取り込み。
+  // webhook の memberJoined は参加の瞬間にしか飛ばないため、それ以前からのメンバーは
+  // ここから取り込む。LINE のメンバー一覧 API は認証済みアカウント限定。
+  const handleSyncGroupMembers = async () => {
+    const groupCount = recipients.filter(
+      (r) => (r as Record<string, unknown>).type !== "user" && r.isActive,
+    ).length;
+    if (groupCount === 0) {
+      alert("取り込み対象のグループがありません。");
+      return;
+    }
+    if (!confirm(`有効なグループ ${groupCount} 件のメンバーを送信先に取り込みます。よろしいですか？`)) return;
+
+    setSyncing(true);
+    try {
+      const res = await fetch("/api/v1/recipients/sync-group-members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || `取り込みに失敗しました (${res.status})`);
+        return;
+      }
+      if (data.notice) {
+        alert(data.notice);
+      } else {
+        alert(`取り込み完了: 新規 ${data.inserted} 件 / 再有効化 ${data.reactivated} 件`);
+      }
+      fetchRecipients();
+    } catch {
+      alert("取り込みに失敗しました");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="page">
       <div className="page__head">
@@ -267,12 +306,22 @@ export default function RecipientsPage() {
           <h1 className="page__title">送信先管理</h1>
           <p className="page__sub">LINEの送信先を登録・管理します。行頭の6点アイコンをドラッグで並び替えできます。</p>
         </div>
-        <button
-          onClick={() => { setEditTarget(null); setShowForm(true); }}
-          className="btn btn--primary"
-        >
-          + 新規登録
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={handleSyncGroupMembers}
+            disabled={syncing}
+            className="btn"
+            title="グループに既に参加しているメンバーを送信先として取り込みます"
+          >
+            {syncing ? "取り込み中…" : "グループのメンバーを取り込む"}
+          </button>
+          <button
+            onClick={() => { setEditTarget(null); setShowForm(true); }}
+            className="btn btn--primary"
+          >
+            + 新規登録
+          </button>
+        </div>
       </div>
 
       {showForm && (
