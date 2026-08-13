@@ -63,6 +63,77 @@ async function fetchUserName(userId: string, token: string): Promise<string> {
   }
 }
 
+// グループ／ルームのメンバープロフィール。
+// `/v2/bot/profile/{userId}` は「公式アカウントを友だち追加済み」のユーザーしか取れず、
+// グループに追加されただけの人は 404 になって表示名が userId のままになる。
+// メンバープロフィール API は友だち未追加でも取れるので、こちらを先に試す。
+async function fetchGroupMemberName(
+  sourceType: 'group' | 'room',
+  groupId: string,
+  userId: string,
+  token: string,
+): Promise<string> {
+  const scope = sourceType === 'group' ? `group/${groupId}` : `room/${groupId}`
+  try {
+    const res = await fetch(`https://api.line.me/v2/bot/${scope}/member/${userId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (res.ok) {
+      const profile = await res.json()
+      if (profile.displayName) return profile.displayName
+    }
+  } catch {
+    // 握りつぶして下のフォールバックへ
+  }
+  // 友だち追加済みなら 1:1 のプロフィールで取れる。最後は userId のまま登録する。
+  return fetchUserName(userId, token)
+}
+
+// recipients への登録（新規 insert / 無効化されていれば再有効化）。
+// 既存行の displayName は上書きしない（画面で付けた名前を webhook が戻さないため）。
+async function upsertRecipient(opts: {
+  lineUserId: string
+  type: 'user' | 'group' | 'room'
+  resolveName: () => Promise<string>
+  memo?: string
+}): Promise<void> {
+  const { data: existing } = await supabase
+    .from('recipients')
+    .select('id, isActive')
+    .eq('tenant_id', WEBHOOK_TENANT_ID)
+    .eq('lineUserId', opts.lineUserId)
+    .maybeSingle()
+
+  if (existing) {
+    if (!existing.isActive) {
+      await supabase
+        .from('recipients')
+        .update({ isActive: true })
+        .eq('tenant_id', WEBHOOK_TENANT_ID)
+        .eq('id', existing.id)
+      console.log(`[webhook] ${opts.type} reactivated: ${opts.lineUserId}`)
+    }
+    return
+  }
+
+  const displayName = await opts.resolveName()
+  const { error } = await supabase.from('recipients').insert({
+    tenant_id: WEBHOOK_TENANT_ID,
+    lineUserId: opts.lineUserId,
+    displayName,
+    memo: opts.memo ?? null,
+    isActive: true,
+    isDefault: false,
+    type: opts.type,
+    sortOrder: await nextSortOrder(),
+  })
+  if (error) {
+    console.error(`[webhook] ${opts.type} insert failed (${opts.lineUserId}):`, error.message)
+  } else {
+    console.log(`[webhook] ${opts.type} registered: ${displayName} (${opts.lineUserId})`)
+  }
+}
+
 // 業務フロー(workflow-system)へ postback イベントを転送する。
 // LINE チャネルは workflow-system と共有しており、Webhook は当アプリが専有しているため、
 // 当アプリでは扱わない postback（業務フローの承認操作など）だけを転送して肩代わりする。
@@ -136,6 +207,41 @@ export async function POST(request: NextRequest) {
 
     const sourceType = event.source?.type
 
+    // メンバー参加（memberJoined）＝ 公式アカウントが居るグループ／ルームに人が追加された。
+    // このイベントの source は group／room で `source.userId` を持たない。そのため下の
+    // 「グループ由来」分岐に流すとグループ本体を見るだけで、追加された本人を取りこぼす
+    // （＝新しいユーザーが自動登録されない）。ここで joined.members を個別に登録する。
+    if (event.type === 'memberJoined') {
+      const groupId = event.source?.groupId || event.source?.roomId
+      if (!groupId || (sourceType !== 'group' && sourceType !== 'room')) {
+        console.log('[webhook] memberJoined without group/room id, skip')
+        continue
+      }
+
+      const groupName = sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム'
+
+      // グループ本体も従来どおり登録／再有効化する（webhook 導入前から居るグループの取りこぼし対策）
+      await upsertRecipient({
+        lineUserId: groupId,
+        type: sourceType,
+        resolveName: async () => groupName,
+      })
+
+      const members: { userId?: string }[] = event.joined?.members || []
+      console.log(`[webhook] memberJoined: ${members.length} member(s) in ${groupName} (${groupId})`)
+      for (const member of members) {
+        const memberId = member?.userId
+        if (!memberId) continue
+        await upsertRecipient({
+          lineUserId: memberId,
+          type: 'user',
+          resolveName: () => fetchGroupMemberName(sourceType, groupId, memberId, token),
+          memo: `「${groupName}」への参加を検知して自動登録`,
+        })
+      }
+      continue
+    }
+
     // グループ／ルーム由来のイベント（join含む）
     if (sourceType === 'group' || sourceType === 'room') {
       const groupId = event.source.groupId || event.source.roomId
@@ -144,37 +250,14 @@ export async function POST(request: NextRequest) {
         continue
       }
 
-      const { data: existing } = await supabase
-        .from('recipients')
-        .select('id, isActive')
-        .eq('tenant_id', WEBHOOK_TENANT_ID)
-        .eq('lineUserId', groupId)
-        .maybeSingle()
-
-      if (existing) {
-        if (!existing.isActive) {
-          await supabase.from('recipients').update({ isActive: true }).eq('tenant_id', WEBHOOK_TENANT_ID).eq('id', existing.id)
-          console.log(`[webhook] Group reactivated: ${groupId}`)
-        }
-        continue
-      }
-
-      const groupName = sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム'
-      const { error } = await supabase.from('recipients').insert({
-        tenant_id: WEBHOOK_TENANT_ID,
+      await upsertRecipient({
         lineUserId: groupId,
-        displayName: groupName,
-        isActive: true,
-        isDefault: false,
         type: sourceType,
-        sortOrder: await nextSortOrder(),
+        resolveName: async () =>
+          sourceType === 'group' ? await fetchGroupName(groupId, token) : 'ルーム',
       })
-      if (error) {
-        console.error(`[webhook] Group insert failed (${groupId}):`, error.message)
-      } else {
-        console.log(`[webhook] Group registered: ${groupName} (${groupId})`)
-      }
       // グループ／ルーム由来のイベントは、発言者個人を recipient に追加しない
+      // （追加の起点は上の memberJoined だけに限定する）
       continue
     }
 
@@ -185,36 +268,11 @@ export async function POST(request: NextRequest) {
       continue
     }
 
-    const { data: existing } = await supabase
-      .from('recipients')
-      .select('id, isActive')
-      .eq('tenant_id', WEBHOOK_TENANT_ID)
-      .eq('lineUserId', userId)
-      .maybeSingle()
-
-    if (existing) {
-      if (!existing.isActive) {
-        await supabase.from('recipients').update({ isActive: true }).eq('tenant_id', WEBHOOK_TENANT_ID).eq('id', existing.id)
-        console.log(`[webhook] User reactivated: ${userId}`)
-      }
-      continue
-    }
-
-    const displayName = await fetchUserName(userId, token)
-    const { error } = await supabase.from('recipients').insert({
-      tenant_id: WEBHOOK_TENANT_ID,
+    await upsertRecipient({
       lineUserId: userId,
-      displayName,
-      isActive: true,
-      isDefault: false,
       type: 'user',
-      sortOrder: await nextSortOrder(),
+      resolveName: () => fetchUserName(userId, token),
     })
-    if (error) {
-      console.error(`[webhook] User insert failed (${userId}):`, error.message)
-    } else {
-      console.log(`[webhook] User registered: ${displayName} (${userId})`)
-    }
   }
 
   return Response.json({ ok: true })
