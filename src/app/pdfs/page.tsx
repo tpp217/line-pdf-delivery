@@ -398,25 +398,44 @@ export default function PdfsPage() {
     fetchData();
   };
 
-  // 「要確認」の確定。merge = 同一人物として統合、separate = 別人として以後出さない。
+  // 「要確認」のまとめて確定。merge = 同一人物として統合、separate = 別人として以後出さない。
+  // 保留は指示に含めない（サーバー側に何も記録せず、次回もそのまま候補に出る）。
   // 統合しても pdf_documents.personName は書き換えないので、LINE に届く文面は変わらない。
-  const resolveMatch = async (
-    action: "merge" | "separate",
-    sourceId: string,
-    targetId: string,
+  const applyMatches = async (
+    actions: { action: "merge" | "separate"; sourceId: string; targetId: string }[],
   ) => {
+    if (actions.length === 0) return;
     setResolving(true);
     try {
       const res = await fetch("/api/v1/persons/match", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, sourceId, targetId }),
+        body: JSON.stringify({ actions }),
       });
-      if (!res.ok) {
-        alert(`エラー: ${(await res.json()).error ?? "不明"}`);
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 207) {
+        alert(`エラー: ${r.error ?? "不明"}`);
         return;
       }
       await fetchData();
+      // 207 は一部失敗。何が残ったか分かるように理由まで出す。
+      const failed = (r.results ?? []).filter(
+        (x: { status: string }) => x.status === "failed",
+      );
+      alert(
+        [
+          `統合 ${r.merged ?? 0}件 / 別人 ${r.separated ?? 0}件を確定しました`,
+          r.skipped ? `${r.skipped}件は先の統合で解決済みのため飛ばしました` : null,
+          failed.length > 0
+            ? `${failed.length}件は失敗しました:\n${failed
+                .map((x: { reason?: string }) => `・${x.reason ?? "不明"}`)
+                .join("\n")}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      if (failed.length === 0) setShowMatchModal(false);
     } catch (e) {
       alert(`通信エラー: ${e instanceof Error ? e.message : "不明"}`);
     } finally {
@@ -811,7 +830,7 @@ export default function PdfsPage() {
         <MatchModal
           groups={matchGroups}
           resolving={resolving}
-          onResolve={resolveMatch}
+          onApply={applyMatches}
           onClose={() => setShowMatchModal(false)}
         />
       )}
@@ -905,26 +924,105 @@ function PeriodModal({
   );
 }
 
+/** 要確認の 1 グループに対する判断。保留はサーバーに何も送らない。 */
+type MatchDecision =
+  | { kind: "same"; targetId: string }
+  | { kind: "different" }
+  | { kind: "hold" };
+
 /**
  * 「要確認」モーダル。
  *
  * 取り込み時に既存人物へ寄せられなかった人物（＝カテゴリ未設定で残っている人物）に対し、
  * 同一人物かもしれない候補を出して人が確定する。ここで確定するまで
  * システムは絶対に別人物を勝手にまとめない（他人の給与明細を配信しないため）。
+ *
+ * 件数が多くなりがちなので、1 件ずつ即時実行せず「同一 / 別人 / 保留」を選んでから
+ * まとめて確定する。保留は何も記録しないので、次回もそのまま候補に出る。
  */
 function MatchModal({
   groups,
   resolving,
-  onResolve,
+  onApply,
   onClose,
 }: {
   groups: MatchGroup[];
   resolving: boolean;
-  onResolve: (action: "merge" | "separate", sourceId: string, targetId: string) => void;
+  onApply: (actions: { action: "merge" | "separate"; sourceId: string; targetId: string }[]) => void;
   onClose: () => void;
 }) {
+  const [decisions, setDecisions] = useState<Record<string, MatchDecision>>({});
+
+  const setDecision = (personId: string, next: MatchDecision | null) => {
+    setDecisions((prev) => {
+      const copy = { ...prev };
+      if (next === null) delete copy[personId];
+      else copy[personId] = next;
+      return copy;
+    });
+  };
+
+  // 同じ選択をもう一度押したら解除（＝未選択に戻す）。
+  const toggleSame = (personId: string, targetId: string) => {
+    const cur = decisions[personId];
+    const isOn = cur?.kind === "same" && cur.targetId === targetId;
+    setDecision(personId, isOn ? null : { kind: "same", targetId });
+  };
+  const toggleKind = (personId: string, kind: "different" | "hold") => {
+    const cur = decisions[personId];
+    setDecision(personId, cur?.kind === kind ? null : { kind });
+  };
+
+  // 完全一致は正規化後の文字列が一致しているので、まとめて選んでも誤りようがない。
+  const selectAllExact = () => {
+    setDecisions((prev) => {
+      const next = { ...prev };
+      for (const g of groups) {
+        if (next[g.person.id]) continue;
+        const exact = g.candidates.find((c) => c.reason === "exact");
+        if (exact) next[g.person.id] = { kind: "same", targetId: exact.person.id };
+      }
+      return next;
+    });
+  };
+
+  const counts = useMemo(() => {
+    let same = 0, different = 0, hold = 0;
+    for (const g of groups) {
+      const d = decisions[g.person.id];
+      if (d?.kind === "same") same++;
+      else if (d?.kind === "different") different++;
+      else if (d?.kind === "hold") hold++;
+    }
+    return { same, different, hold, undecided: groups.length - same - different - hold };
+  }, [groups, decisions]);
+
+  const exactAvailable = useMemo(
+    () => groups.filter((g) => !decisions[g.person.id] && g.candidates.some((c) => c.reason === "exact")).length,
+    [groups, decisions],
+  );
+
+  const buildActions = () => {
+    const actions: { action: "merge" | "separate"; sourceId: string; targetId: string }[] = [];
+    for (const g of groups) {
+      const d = decisions[g.person.id];
+      if (!d || d.kind === "hold") continue;
+      if (d.kind === "same") {
+        actions.push({ action: "merge", sourceId: g.person.id, targetId: d.targetId });
+      } else {
+        // 「別人」はこのグループに出ている候補すべてを却下する。
+        for (const c of g.candidates) {
+          actions.push({ action: "separate", sourceId: g.person.id, targetId: c.person.id });
+        }
+      }
+    }
+    return actions;
+  };
+
+  const pending = counts.same + counts.different;
+
   return (
-    <div className="modal__backdrop" onClick={onClose}>
+    <div className="modal__backdrop" onClick={resolving ? undefined : onClose}>
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <div className="modal__title">
@@ -934,9 +1032,11 @@ function MatchModal({
         <div className="modal__body">
           <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
             ファイル名の書き方が違うために別人として登録された可能性がある人物です。
-            <strong>同一人物</strong> にまとめると、その人物のPDF・カテゴリが統合され、
-            次回以降は同じ書き方のファイルが自動で紐付きます。
-            <strong>別人</strong> を選ぶと、以後この組み合わせは表示されません。
+            それぞれ <strong>同一 / 別人 / 保留</strong> を選び、最後にまとめて確定します。
+            <br />
+            <strong>同一</strong>…その候補にPDFとカテゴリを統合し、次回から同じ書き方のファイルが自動で紐付きます。
+            <strong>別人</strong>…以後この組み合わせは表示しません。
+            <strong>保留</strong>…何も記録せず、次回もここに出ます。
             <br />
             ※ 統合してもLINEに届くメッセージのタイトルは変わりません。
           </p>
@@ -944,87 +1044,147 @@ function MatchModal({
           {groups.length === 0 ? (
             <div className="empty">確認が必要な人物はありません。</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto" }}>
-              {groups.map((g) => (
-                <div
-                  key={g.person.id}
-                  style={{
-                    border: "1px solid var(--border)",
-                    borderRadius: 5,
-                    padding: 10,
-                    background: "var(--surface)",
-                  }}
+            <>
+              <div
+                className="toolbar"
+                style={{ marginBottom: 10, gap: 8, alignItems: "center", flexWrap: "wrap" }}
+              >
+                <button
+                  type="button"
+                  className="btn btn--sm"
+                  onClick={selectAllExact}
+                  disabled={resolving || exactAvailable === 0}
+                  title="正規化後の名前が完全に一致しているものだけを選びます"
                 >
-                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
-                    {g.person.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>
-                    カテゴリ未設定 — このままでは一括送信の対象になりません
-                  </div>
+                  完全一致をすべて同一に（{exactAvailable}）
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => setDecisions({})}
+                  disabled={resolving || Object.keys(decisions).length === 0}
+                >
+                  選択をクリア
+                </button>
+                <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: "auto" }}>
+                  同一 <span className="num">{counts.same}</span> ／ 別人{" "}
+                  <span className="num">{counts.different}</span> ／ 保留{" "}
+                  <span className="num">{counts.hold}</span> ／ 未選択{" "}
+                  <span className="num">{counts.undecided}</span>
+                </span>
+              </div>
 
-                  {g.candidates.map((c) => (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 400, overflowY: "auto" }}>
+                {groups.map((g) => {
+                  const d = decisions[g.person.id];
+                  const decided = d !== undefined;
+                  return (
                     <div
-                      key={c.person.id}
+                      key={g.person.id}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
-                        padding: "6px 0",
-                        borderTop: "1px solid var(--border)",
+                        border: `1px solid ${decided ? "var(--blue-border)" : "var(--border)"}`,
+                        borderRadius: 5,
+                        padding: 10,
+                        background: "var(--surface)",
+                        opacity: d?.kind === "hold" ? 0.6 : 1,
                       }}
                     >
-                      <span
-                        className={`badge ${c.reason === "exact" ? "badge--blue" : "badge--purple"}`}
-                        title={`類似度 ${Math.round(c.score * 100)}%`}
-                      >
-                        {REASON_LABEL[c.reason]}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 500 }}>{c.person.name}</span>
-                      <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                        {c.person.categories.length > 0 ? (
-                          c.person.categories.map((cat) => (
-                            <span key={cat} className="badge badge--blue">{cat}</span>
-                          ))
-                        ) : (
-                          <span className="text-mute" style={{ fontSize: 11 }}>カテゴリなし</span>
-                        )}
-                      </span>
-                      <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-                        <button
-                          className="btn btn--sm btn--primary"
-                          disabled={resolving}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `「${g.person.name}」を「${c.person.name}」と同一人物としてまとめます。\n` +
-                                  `「${g.person.name}」のPDFは「${c.person.name}」に移り、以後同じ書き方のファイルは自動で紐付きます。`,
-                              )
-                            ) {
-                              onResolve("merge", g.person.id, c.person.id);
-                            }
-                          }}
-                        >
-                          同一人物
-                        </button>
-                        <button
-                          className="btn btn--sm btn--ghost"
-                          disabled={resolving}
-                          onClick={() => onResolve("separate", g.person.id, c.person.id)}
-                        >
-                          別人
-                        </button>
-                      </span>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{g.person.name}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+                            カテゴリ未設定 — このままでは一括送信の対象になりません
+                          </div>
+                        </div>
+                        <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+                          <button
+                            type="button"
+                            className={`chip ${d?.kind === "different" ? "is-active" : ""}`}
+                            onClick={() => toggleKind(g.person.id, "different")}
+                            disabled={resolving}
+                          >
+                            別人
+                          </button>
+                          <button
+                            type="button"
+                            className={`chip ${d?.kind === "hold" ? "is-active" : ""}`}
+                            onClick={() => toggleKind(g.person.id, "hold")}
+                            disabled={resolving}
+                          >
+                            保留
+                          </button>
+                        </span>
+                      </div>
+
+                      {g.candidates.map((c) => {
+                        const chosen = d?.kind === "same" && d.targetId === c.person.id;
+                        return (
+                          <div
+                            key={c.person.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              padding: "6px 0",
+                              borderTop: "1px solid var(--border)",
+                              marginTop: 6,
+                            }}
+                          >
+                            <span
+                              className={`badge ${c.reason === "exact" ? "badge--blue" : "badge--purple"}`}
+                              title={`類似度 ${Math.round(c.score * 100)}%`}
+                            >
+                              {REASON_LABEL[c.reason]}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 500 }}>{c.person.name}</span>
+                            <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {c.person.categories.length > 0 ? (
+                                c.person.categories.map((cat) => (
+                                  <span key={cat} className="badge badge--blue">{cat}</span>
+                                ))
+                              ) : (
+                                <span className="text-mute" style={{ fontSize: 11 }}>カテゴリなし</span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              className={`chip ${chosen ? "is-active" : ""}`}
+                              style={{ marginLeft: "auto" }}
+                              onClick={() => toggleSame(g.person.id, c.person.id)}
+                              disabled={resolving}
+                            >
+                              {chosen ? "✓ 同一" : "同一"}
+                            </button>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
         <div className="modal__foot">
           <button onClick={onClose} className="btn" disabled={resolving}>
             {resolving ? "処理中…" : "閉じる"}
+          </button>
+          <button
+            className="btn btn--primary"
+            disabled={resolving || pending === 0}
+            onClick={() => {
+              const actions = buildActions();
+              const parts = [
+                counts.same > 0 ? `同一 ${counts.same}件（PDFとカテゴリを統合します）` : null,
+                counts.different > 0 ? `別人 ${counts.different}件` : null,
+              ].filter(Boolean).join("\n");
+              if (confirm(`次の内容で確定します。\n\n${parts}\n\nよろしいですか？`)) {
+                onApply(actions);
+              }
+            }}
+          >
+            {resolving ? "確定中…" : `確定 (${pending})`}
           </button>
         </div>
       </div>
