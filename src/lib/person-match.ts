@@ -174,19 +174,37 @@ export async function resolvePersonForFile(
   return { personId: row.id, personName, key, outcome: 'created' }
 }
 
+export type CandidatePerson = {
+  id: string
+  name: string
+  categories: string[]
+  /** 正規化キー。統合先の既定を決めるのに使う。 */
+  key: string
+}
+
 export type Candidate = {
-  person: { id: string; name: string; categories: string[] }
+  person: CandidatePerson
   reason: MatchReason
   score: number
 }
 
 export type CandidateGroup = {
-  person: { id: string; name: string; categories: string[] }
+  person: CandidatePerson
   candidates: Candidate[]
 }
 
-function toView(p: PersonRow): { id: string; name: string; categories: string[] } {
-  return { id: p.id, name: p.name, categories: p.categories ?? [] }
+/**
+ * 画面へ渡す人物。正規化キーも一緒に返す。
+ *
+ * 画面は「名前のどこまでが書類名の蛇足か」を key との差分で判断して統合先の既定を
+ * 決める（例:「給与支払明細書_原ヂエゴガルキス」より「原ヂエゴガルキス」を残す）。
+ * 同じ計算を画面側に持たせると辞書の同期が要るので、サーバーで出した値を渡す。
+ */
+function toView(
+  p: PersonRow,
+  key: string,
+): { id: string; name: string; categories: string[]; key: string } {
+  return { id: p.id, name: p.name, categories: p.categories ?? [], key }
 }
 
 /**
@@ -217,7 +235,7 @@ export function buildCandidateGroups(index: MatchIndex): CandidateGroup[] {
       if (!otherKey) continue
       const m = classifyMatch(key, otherKey)
       if (!m) continue
-      candidates.push({ person: toView(other), reason: m.reason, score: m.score })
+      candidates.push({ person: toView(other, otherKey), reason: m.reason, score: m.score })
     }
 
     if (candidates.length === 0) continue
@@ -230,7 +248,7 @@ export function buildCandidateGroups(index: MatchIndex): CandidateGroup[] {
       return a.person.name.localeCompare(b.person.name, 'ja')
     })
 
-    groups.push({ person: toView(person), candidates })
+    groups.push({ person: toView(person, key), candidates })
   }
 
   // 確度の高い（＝完全一致の候補を持つ）ものから片付けられるように並べる。

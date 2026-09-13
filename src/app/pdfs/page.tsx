@@ -34,14 +34,22 @@ type CategoryRecipientMap = Record<string, string[]>;
 
 type MatchReason = "exact" | "prefix" | "fuzzy";
 
+type MatchPerson = {
+  id: string;
+  name: string;
+  categories: string[];
+  /** 正規化キー。統合先の既定を決めるのに使う。 */
+  key: string;
+};
+
 type MatchCandidate = {
-  person: { id: string; name: string; categories: string[] };
+  person: MatchPerson;
   reason: MatchReason;
   score: number;
 };
 
 type MatchGroup = {
-  person: { id: string; name: string; categories: string[] };
+  person: MatchPerson;
   candidates: MatchCandidate[];
 };
 
@@ -933,21 +941,32 @@ function PeriodModal({
  * 保留はサーバーに何も送らない。
  */
 type MatchDecision =
-  | { kind: "same"; targetIds: string[] }
+  | { kind: "same"; targetIds: string[]; survivorId?: string }
   | { kind: "different" }
   | { kind: "hold" };
 
-type MatchPersonView = { id: string; name: string; categories: string[] };
-
 /**
- * 統合先（生き残る人物）を決める。
+ * 統合先（生き残る人物）の既定を決める。
  *
- * カテゴリが付いている人物を優先する。カテゴリは配信の絞り込みと送信先解決を
- * 兼ねるので、設定済みの側に寄せるのが最も情報が減らない。該当が無ければ起点を残す。
- * （カテゴリはどちらにせよ和集合で寄せるので、どれを選んでも失われはしない）
+ * カテゴリは見ない。統合時に和集合で寄せる（src/lib/person-merge.ts）ので、
+ * どれを残してもカテゴリは失われず、選定の判断材料にならないため。
+ * PDF の紐付けも配信タイトル（pdf_documents.personName を使う）も統合先で変わらない。
+ * つまりここで決まるのは実質「アプリ内でその人を指す名前」なので、名前の質だけで選ぶ。
+ *
+ *   1. 正規化キーが長いもの＝より完全な氏名（「奥村」より「奥村華月」）
+ *   2. キーとの差が小さいもの＝書類名の蛇足が少ない
+ *      （「給与支払明細書_原ヂエゴガルキス」より「原ヂエゴガルキス」）
+ *   3. 短いもの / id 順（安定した順序のため）
  */
-function pickSurvivor(members: MatchPersonView[]): MatchPersonView {
-  return members.find((m) => m.categories.length > 0) ?? members[0];
+function pickSurvivor(members: MatchPerson[]): MatchPerson {
+  return [...members].sort((a, b) => {
+    if (a.key.length !== b.key.length) return b.key.length - a.key.length;
+    const aExtra = a.name.length - a.key.length;
+    const bExtra = b.name.length - b.key.length;
+    if (aExtra !== bExtra) return aExtra - bExtra;
+    if (a.name.length !== b.name.length) return a.name.length - b.name.length;
+    return a.id < b.id ? -1 : 1;
+  })[0];
 }
 
 /**
@@ -990,9 +1009,26 @@ function MatchModal({
         ? checked.filter((x) => x !== candidateId)
         : [...checked, candidateId];
       const copy = { ...prev };
-      if (next.length === 0) delete copy[personId];
-      else copy[personId] = { kind: "same", targetIds: next };
+      if (next.length === 0) {
+        delete copy[personId];
+      } else {
+        // 統合先に指定していた候補のチェックを外したら、既定に戻す。
+        const survivorId =
+          cur?.kind === "same" && cur.survivorId && next.includes(cur.survivorId)
+            ? cur.survivorId
+            : undefined;
+        copy[personId] = { kind: "same", targetIds: next, survivorId };
+      }
       return copy;
+    });
+  };
+
+  // 統合先の明示指定。既定（pickSurvivor）で不都合なときに人が選ぶ。
+  const chooseSurvivor = (personId: string, survivorId: string) => {
+    setDecisions((prev) => {
+      const cur = prev[personId];
+      if (cur?.kind !== "same") return prev;
+      return { ...prev, [personId]: { ...cur, survivorId } };
     });
   };
 
@@ -1015,7 +1051,7 @@ function MatchModal({
   };
 
   /** グループの起点＋チェック済み候補。統合対象になる人物の一覧。 */
-  const membersOf = (g: MatchGroup, d: MatchDecision | undefined): MatchPersonView[] => {
+  const membersOf = (g: MatchGroup, d: MatchDecision | undefined): MatchPerson[] => {
     if (d?.kind !== "same") return [g.person];
     const checked = g.candidates.filter((c) => d.targetIds.includes(c.person.id));
     return [g.person, ...checked.map((c) => c.person)];
@@ -1044,7 +1080,8 @@ function MatchModal({
       if (!d || d.kind === "hold") continue;
       if (d.kind === "same") {
         const members = membersOf(g, d);
-        const survivor = pickSurvivor(members);
+        const survivor =
+          members.find((m) => m.id === d.survivorId) ?? pickSurvivor(members);
         for (const m of members) {
           if (m.id !== survivor.id) {
             actions.push({ action: "merge", sourceId: m.id, targetId: survivor.id });
@@ -1074,7 +1111,8 @@ function MatchModal({
           <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
             ファイル名の書き方が違うために別人として登録された可能性がある人物です。
             <strong>同じ人物にチェックを入れてください（複数可）</strong>。
-            チェックした人物はまとめて 1 人に統合され、PDF とカテゴリが引き継がれます。
+            チェックした人物はまとめて 1 人に統合され、PDF とカテゴリが引き継がれます
+            （カテゴリは全員分の和集合なので、どれを残しても失われません）。
             該当が無ければ <strong>別人</strong>、後で決めるなら <strong>保留</strong>（何も記録せず次回もここに出ます）。
             <br />
             ※ 統合してもLINEに届くメッセージのタイトルは変わりません。
@@ -1114,7 +1152,10 @@ function MatchModal({
                 {groups.map((g) => {
                   const d = decisions[g.person.id];
                   const members = membersOf(g, d);
-                  const survivor = d?.kind === "same" ? pickSurvivor(members) : null;
+                  const survivor =
+                    d?.kind === "same"
+                      ? members.find((m) => m.id === d.survivorId) ?? pickSurvivor(members)
+                      : null;
                   return (
                     <div
                       key={g.person.id}
@@ -1131,6 +1172,21 @@ function MatchModal({
                         <span className="badge">対象</span>
                         <span style={{ fontSize: 13, fontWeight: 600 }}>{g.person.name}</span>
                         <span className="text-mute" style={{ fontSize: 11 }}>カテゴリ未設定</span>
+                        {survivor && (
+                          survivor.id === g.person.id ? (
+                            <span className="badge badge--blue">統合先</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn--sm btn--ghost"
+                              onClick={() => chooseSurvivor(g.person.id, g.person.id)}
+                              disabled={resolving}
+                              title="この名前を残します"
+                            >
+                              統合先にする
+                            </button>
+                          )
+                        )}
                         <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                           <button
                             type="button"
@@ -1192,9 +1248,26 @@ function MatchModal({
                                 <span className="text-mute" style={{ fontSize: 11 }}>カテゴリなし</span>
                               )}
                             </span>
-                            {survivor?.id === c.person.id && (
-                              <span className="badge badge--blue" style={{ marginLeft: "auto" }}>
-                                統合先
+                            {chosen && (
+                              <span style={{ marginLeft: "auto" }}>
+                                {survivor?.id === c.person.id ? (
+                                  <span className="badge badge--blue">統合先</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className="btn btn--sm btn--ghost"
+                                    onClick={(e) => {
+                                      // label の中なのでチェックのトグルまで伝播させない
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      chooseSurvivor(g.person.id, c.person.id);
+                                    }}
+                                    disabled={resolving}
+                                    title="この名前を残します"
+                                  >
+                                    統合先にする
+                                  </button>
+                                )}
                               </span>
                             )}
                           </label>
@@ -1205,7 +1278,9 @@ function MatchModal({
                         <div style={{ fontSize: 11, color: "var(--text-2)", marginTop: 8 }}>
                           <span className="num">{members.length}</span>人を
                           <strong>「{survivor.name}」</strong>にまとめます
-                          {survivor.id === g.person.id && "（候補にカテゴリが無いため対象を残します）"}
+                          <span style={{ color: "var(--text-3)" }}>
+                            {" "}— カテゴリは全員分をまとめて引き継ぎます。残す名前は「統合先にする」で変更できます
+                          </span>
                         </div>
                       )}
                     </div>
