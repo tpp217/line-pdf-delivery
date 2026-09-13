@@ -182,88 +182,159 @@ export type CandidatePerson = {
   key: string
 }
 
-export type Candidate = {
-  person: CandidatePerson
+export type ClusterMember = CandidatePerson & {
+  /** クラスタの代表キー（最も多くの人物が共有するキー）との関係。 */
   reason: MatchReason
   score: number
 }
 
-export type CandidateGroup = {
-  person: CandidatePerson
-  candidates: Candidate[]
+export type CandidateCluster = {
+  /** React の key 用。構成が同じなら安定する値。 */
+  id: string
+  members: ClusterMember[]
 }
 
-/**
- * 画面へ渡す人物。正規化キーも一緒に返す。
- *
- * 画面は「名前のどこまでが書類名の蛇足か」を key との差分で判断して統合先の既定を
- * 決める（例:「給与支払明細書_原ヂエゴガルキス」より「原ヂエゴガルキス」を残す）。
- * 同じ計算を画面側に持たせると辞書の同期が要るので、サーバーで出した値を渡す。
- */
-function toView(
-  p: PersonRow,
-  key: string,
-): { id: string; name: string; categories: string[]; key: string } {
+function toView(p: PersonRow, key: string): CandidatePerson {
   return { id: p.id, name: p.name, categories: p.categories ?? [], key }
 }
 
 /**
  * 「要確認」リストを組み立てる。
  *
- * 起点はカテゴリ未設定の人物（＝カテゴリ絞り込みから漏れて一括送信に乗らない行）。
- * その人物に対して、同一テナントの他の人物のうち正規化キーが一致／前方一致／
- * 類似するものを候補として返す。却下済みペアと自分自身は除く。
+ * ★ 人物ごとではなく「クラスタごと」に 1 件返す。
  *
- * カテゴリ設定済みの候補を先に見せる（統合先として妥当なのは通常そちら）。
+ *   以前は未分類の人物 1 行につき 1 グループを作っていた。そのため同じ塊に未分類の
+ *   行が複数あると、同じ顔ぶれが行数ぶん並んだ（「新名鉄平が何度も出てくる」）。
+ *   ファイル名の表記ゆれは 1 人につき複数行を生むので、これは例外ではなく常態だった。
+ *   一致関係で連結成分を取り、塊ごとに 1 件だけ出す。
+ *
+ * 返すのは「未分類の人物を含む」クラスタだけ。全員にカテゴリが付いているなら
+ * 配信から漏れておらず、急いで直す理由がないため（重複は残るが実害が出ていない）。
+ *
+ * 規模の前提: person-match の他の処理と同じくテナントあたり数百件を想定。
+ * 総当たりだが、キーの組み合わせで判定結果をキャッシュするので実質はキー数の二乗。
  */
-export function buildCandidateGroups(index: MatchIndex): CandidateGroup[] {
+export function buildCandidateClusters(index: MatchIndex): CandidateCluster[] {
   const keyOf = new Map<string, string>()
-  for (const p of index.persons) keyOf.set(p.id, normalizePersonKey(p.name, index.tokens))
-
-  const groups: CandidateGroup[] = []
-
-  for (const person of index.persons) {
-    if ((person.categories?.length ?? 0) > 0) continue
-    const key = keyOf.get(person.id) ?? ''
-    if (!key) continue
-
-    const candidates: Candidate[] = []
-    for (const other of index.persons) {
-      if (other.id === person.id) continue
-      if (index.dismissed.has(dismissalKey(person.id, other.id))) continue
-      const otherKey = keyOf.get(other.id) ?? ''
-      if (!otherKey) continue
-      const m = classifyMatch(key, otherKey)
-      if (!m) continue
-      candidates.push({ person: toView(other, otherKey), reason: m.reason, score: m.score })
-    }
-
-    if (candidates.length === 0) continue
-
-    candidates.sort((a, b) => {
-      const aCat = a.person.categories.length > 0 ? 1 : 0
-      const bCat = b.person.categories.length > 0 ? 1 : 0
-      if (aCat !== bCat) return bCat - aCat
-      if (a.score !== b.score) return b.score - a.score
-      return a.person.name.localeCompare(b.person.name, 'ja')
-    })
-
-    groups.push({ person: toView(person, key), candidates })
+  const persons: PersonRow[] = []
+  for (const p of index.persons) {
+    const key = normalizePersonKey(p.name, index.tokens)
+    if (!key) continue // キーが空になる名前は比較のしようがないので対象外
+    keyOf.set(p.id, key)
+    persons.push(p)
   }
 
-  // 確度の高い（＝完全一致の候補を持つ）ものから片付けられるように並べる。
-  groups.sort((a, b) => {
-    const aTop = a.candidates[0]
-    const bTop = b.candidates[0]
-    if (aTop.reason !== bTop.reason) {
-      const rank: Record<MatchReason, number> = { exact: 0, prefix: 1, fuzzy: 2 }
-      return rank[aTop.reason] - rank[bTop.reason]
+  // ── union-find で一致関係の連結成分を作る ──
+  const parent = new Map<string, string>()
+  const find = (x: string): string => {
+    let root = x
+    while (parent.get(root) !== root) root = parent.get(root) as string
+    // 経路圧縮
+    let cur = x
+    while (parent.get(cur) !== root) {
+      const next = parent.get(cur) as string
+      parent.set(cur, root)
+      cur = next
     }
-    if (aTop.score !== bTop.score) return bTop.score - aTop.score
-    return a.person.name.localeCompare(b.person.name, 'ja')
+    return root
+  }
+  const union = (a: string, b: string) => {
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent.set(ra, rb)
+  }
+  for (const p of persons) parent.set(p.id, p.id)
+
+  // キーの組み合わせごとの判定はキャッシュする（同じキーの人物が複数いるため）。
+  // 区切りの "|" は正規化で必ず取り除かれるので、キーに現れず衝突しない。
+  const verdict = new Map<string, { reason: MatchReason; score: number } | null>()
+  const classify = (a: string, b: string) => {
+    const ck = a < b ? a + '|' + b : b + '|' + a
+    let v = verdict.get(ck)
+    if (v === undefined) {
+      v = classifyMatch(a, b)
+      verdict.set(ck, v)
+    }
+    return v
+  }
+
+  for (let i = 0; i < persons.length; i++) {
+    for (let j = i + 1; j < persons.length; j++) {
+      const a = persons[i]
+      const b = persons[j]
+      // 「別人」と確定済みのペアは辺を張らない（塊が再結合しないように）。
+      if (index.dismissed.has(dismissalKey(a.id, b.id))) continue
+      if (!classify(keyOf.get(a.id) as string, keyOf.get(b.id) as string)) continue
+      union(a.id, b.id)
+    }
+  }
+
+  // ── 連結成分ごとにまとめる ──
+  const byRoot = new Map<string, PersonRow[]>()
+  for (const p of persons) {
+    const root = find(p.id)
+    const arr = byRoot.get(root)
+    if (arr) arr.push(p)
+    else byRoot.set(root, [p])
+  }
+
+  const clusters: CandidateCluster[] = []
+
+  for (const rows of byRoot.values()) {
+    if (rows.length < 2) continue
+    // カテゴリ未設定の人物を含まない塊は配信から漏れていないので出さない。
+    if (!rows.some((r) => (r.categories?.length ?? 0) === 0)) continue
+
+    // 代表キー: 最も多くの人物が共有するキー。同数なら長いほう（より完全な氏名）。
+    const keyCount = new Map<string, number>()
+    for (const r of rows) {
+      const k = keyOf.get(r.id) as string
+      keyCount.set(k, (keyCount.get(k) ?? 0) + 1)
+    }
+    let mainKey = ''
+    let best = -1
+    for (const [k, c] of keyCount) {
+      if (c > best || (c === best && k.length > mainKey.length)) {
+        mainKey = k
+        best = c
+      }
+    }
+
+    const members: ClusterMember[] = rows.map((r) => {
+      const key = keyOf.get(r.id) as string
+      const v =
+        key === mainKey ? { reason: 'exact' as MatchReason, score: 1 } : classify(mainKey, key)
+      return {
+        ...toView(r, key),
+        // 連結成分は間接的に繋がることもあるので、代表と直接一致しない場合がある。
+        reason: v?.reason ?? 'fuzzy',
+        score: v?.score ?? 0,
+      }
+    })
+
+    // 完全一致（＝確実に同じ表記）を先頭へ。その中はカテゴリ有り、名前順。
+    members.sort((a, b) => {
+      const rank: Record<MatchReason, number> = { exact: 0, prefix: 1, fuzzy: 2 }
+      if (a.reason !== b.reason) return rank[a.reason] - rank[b.reason]
+      const aCat = a.categories.length > 0 ? 1 : 0
+      const bCat = b.categories.length > 0 ? 1 : 0
+      if (aCat !== bCat) return bCat - aCat
+      return a.name.localeCompare(b.name, 'ja')
+    })
+
+    clusters.push({ id: [...rows.map((r) => r.id)].sort()[0], members })
+  }
+
+  // 確度の高い（＝完全一致だけで構成された）塊から片付けられるように並べる。
+  clusters.sort((a, b) => {
+    const aAllExact = a.members.every((m) => m.reason === 'exact') ? 0 : 1
+    const bAllExact = b.members.every((m) => m.reason === 'exact') ? 0 : 1
+    if (aAllExact !== bAllExact) return aAllExact - bAllExact
+    if (a.members.length !== b.members.length) return b.members.length - a.members.length
+    return a.members[0].name.localeCompare(b.members[0].name, 'ja')
   })
 
-  return groups
+  return clusters
 }
 
 export type { PersonLike }

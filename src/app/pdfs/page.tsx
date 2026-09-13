@@ -40,17 +40,15 @@ type MatchPerson = {
   categories: string[];
   /** 正規化キー。統合先の既定を決めるのに使う。 */
   key: string;
-};
-
-type MatchCandidate = {
-  person: MatchPerson;
+  /** クラスタの代表キーとの関係。 */
   reason: MatchReason;
   score: number;
 };
 
-type MatchGroup = {
-  person: MatchPerson;
-  candidates: MatchCandidate[];
+/** 同一人物かもしれない人物の塊。人物ごとではなく塊ごとに 1 件。 */
+type MatchCluster = {
+  id: string;
+  members: MatchPerson[];
 };
 
 // カテゴリ未設定を表す擬似カテゴリ。
@@ -106,7 +104,7 @@ export default function PdfsPage() {
   const [catInput, setCatInput] = useState("");
   const [editingCats, setEditingCats] = useState<string[]>([]);
   const [catRecipientMap, setCatRecipientMap] = useState<CategoryRecipientMap>({});
-  const [matchGroups, setMatchGroups] = useState<MatchGroup[]>([]);
+  const [matchClusters, setMatchClusters] = useState<MatchCluster[]>([]);
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [resolving, setResolving] = useState(false);
@@ -138,7 +136,7 @@ export default function PdfsPage() {
     }
     setCatRecipientMap(map);
     const mData = await mRes.json();
-    setMatchGroups((mData.items ?? []) as MatchGroup[]);
+    setMatchClusters((mData.items ?? []) as MatchCluster[]);
     setLoading(false);
   }, []);
 
@@ -597,13 +595,13 @@ export default function PdfsPage() {
                 </span>
               )}
               <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                {matchGroups.length > 0 && (
+                {matchClusters.length > 0 && (
                   <button
                     onClick={() => setShowMatchModal(true)}
                     className="btn btn--sm"
                     title="同一人物の可能性がある人物の候補を確認します"
                   >
-                    要確認 <span className="num">{matchGroups.length}</span>
+                    要確認 <span className="num">{matchClusters.length}</span>
                   </button>
                 )}
                 <button
@@ -836,7 +834,7 @@ export default function PdfsPage() {
       {/* 要確認（同一人物の候補）モーダル */}
       {showMatchModal && (
         <MatchModal
-          groups={matchGroups}
+          clusters={matchClusters}
           resolving={resolving}
           onApply={applyMatches}
           onClose={() => setShowMatchModal(false)}
@@ -933,15 +931,14 @@ function PeriodModal({
 }
 
 /**
- * 要確認の 1 グループに対する判断。
+ * 要確認の 1 クラスタに対する判断。
  *
- * same の targetIds は「起点と同じ人物だとチェックした候補」。実データでは
+ * memberIds は「同じ人物だとチェックした人物」。実データでは
  * 「奥村 / 奥村華月 / 給与支払明細書_奥村華月」のように 3 件以上が同一人物という
- * グループが大半（26 グループ中 24 が候補 3 件以上）なので、複数選べる必要がある。
- * 保留はサーバーに何も送らない。
+ * ケースが大半なので、複数選べる必要がある。保留はサーバーに何も送らない。
  */
 type MatchDecision =
-  | { kind: "same"; targetIds: string[]; survivorId?: string }
+  | { kind: "same"; memberIds: string[]; survivorId?: string }
   | { kind: "different" }
   | { kind: "hold" };
 
@@ -972,125 +969,123 @@ function pickSurvivor(members: MatchPerson[]): MatchPerson {
 /**
  * 「要確認」モーダル。
  *
- * 取り込み時に既存人物へ寄せられなかった人物（＝カテゴリ未設定で残っている人物）に対し、
- * 同一人物かもしれない候補を出して人が確定する。ここで確定するまで
- * システムは絶対に別人物を勝手にまとめない（他人の給与明細を配信しないため）。
+ * 同一人物かもしれない人物の「塊」を 1 件ずつ出し、その中で同じ人物にチェックを
+ * 入れてもらう。塊単位なので、同じ顔ぶれが何度も並ぶことはない。
  *
- * 件数が多いので 1 件ずつ即時実行はせず、チェックしてから最後にまとめて確定する。
+ * 確定するまでシステムは絶対に別人物を勝手にまとめない（他人の給与明細を
+ * 配信しないため）。件数が多いので、まとめて確定できるようにしている。
  */
 function MatchModal({
-  groups,
+  clusters,
   resolving,
   onApply,
   onClose,
 }: {
-  groups: MatchGroup[];
+  clusters: MatchCluster[];
   resolving: boolean;
   onApply: (actions: { action: "merge" | "separate"; sourceId: string; targetId: string }[]) => void;
   onClose: () => void;
 }) {
   const [decisions, setDecisions] = useState<Record<string, MatchDecision>>({});
 
-  const setDecision = (personId: string, next: MatchDecision | null) => {
+  const toggleMember = (clusterId: string, memberId: string) => {
     setDecisions((prev) => {
-      const copy = { ...prev };
-      if (next === null) delete copy[personId];
-      else copy[personId] = next;
-      return copy;
-    });
-  };
-
-  // 候補のチェックは複数可。全部外したら未選択に戻す。
-  const toggleCandidate = (personId: string, candidateId: string) => {
-    setDecisions((prev) => {
-      const cur = prev[personId];
-      const checked = cur?.kind === "same" ? cur.targetIds : [];
-      const next = checked.includes(candidateId)
-        ? checked.filter((x) => x !== candidateId)
-        : [...checked, candidateId];
+      const cur = prev[clusterId];
+      const checked = cur?.kind === "same" ? cur.memberIds : [];
+      const next = checked.includes(memberId)
+        ? checked.filter((x) => x !== memberId)
+        : [...checked, memberId];
       const copy = { ...prev };
       if (next.length === 0) {
-        delete copy[personId];
+        delete copy[clusterId];
       } else {
-        // 統合先に指定していた候補のチェックを外したら、既定に戻す。
+        // 統合先に指定していた人物のチェックを外したら、既定に戻す。
         const survivorId =
           cur?.kind === "same" && cur.survivorId && next.includes(cur.survivorId)
             ? cur.survivorId
             : undefined;
-        copy[personId] = { kind: "same", targetIds: next, survivorId };
+        copy[clusterId] = { kind: "same", memberIds: next, survivorId };
       }
       return copy;
     });
   };
 
-  // 統合先の明示指定。既定（pickSurvivor）で不都合なときに人が選ぶ。
-  const chooseSurvivor = (personId: string, survivorId: string) => {
+  const chooseSurvivor = (clusterId: string, survivorId: string) => {
     setDecisions((prev) => {
-      const cur = prev[personId];
+      const cur = prev[clusterId];
       if (cur?.kind !== "same") return prev;
-      return { ...prev, [personId]: { ...cur, survivorId } };
+      return { ...prev, [clusterId]: { ...cur, survivorId } };
     });
   };
 
-  const toggleKind = (personId: string, kind: "different" | "hold") => {
-    const cur = decisions[personId];
-    setDecision(personId, cur?.kind === kind ? null : { kind });
+  const toggleKind = (clusterId: string, kind: "different" | "hold") => {
+    setDecisions((prev) => {
+      const copy = { ...prev };
+      if (copy[clusterId]?.kind === kind) delete copy[clusterId];
+      else copy[clusterId] = { kind };
+      return copy;
+    });
   };
 
-  // 完全一致は正規化後の文字列が一致しているので、まとめて選んでも取り違えようがない。
+  // 完全一致は正規化後の文字列が同じなので、まとめて選んでも取り違えようがない。
   const selectAllExact = () => {
     setDecisions((prev) => {
       const next = { ...prev };
-      for (const g of groups) {
-        if (next[g.person.id]) continue;
-        const exact = g.candidates.filter((c) => c.reason === "exact").map((c) => c.person.id);
-        if (exact.length > 0) next[g.person.id] = { kind: "same", targetIds: exact };
+      for (const c of clusters) {
+        if (next[c.id]) continue;
+        const exact = c.members.filter((m) => m.reason === "exact").map((m) => m.id);
+        if (exact.length >= 2) next[c.id] = { kind: "same", memberIds: exact };
       }
       return next;
     });
   };
 
-  /** グループの起点＋チェック済み候補。統合対象になる人物の一覧。 */
-  const membersOf = (g: MatchGroup, d: MatchDecision | undefined): MatchPerson[] => {
-    if (d?.kind !== "same") return [g.person];
-    const checked = g.candidates.filter((c) => d.targetIds.includes(c.person.id));
-    return [g.person, ...checked.map((c) => c.person)];
-  };
+  const checkedOf = (c: MatchCluster, d: MatchDecision | undefined): MatchPerson[] =>
+    d?.kind === "same" ? c.members.filter((m) => d.memberIds.includes(m.id)) : [];
 
   const counts = useMemo(() => {
     let same = 0, samePeople = 0, different = 0, hold = 0;
-    for (const g of groups) {
-      const d = decisions[g.person.id];
-      if (d?.kind === "same") { same++; samePeople += d.targetIds.length + 1; }
+    for (const c of clusters) {
+      const d = decisions[c.id];
+      if (d?.kind === "same") { same++; samePeople += d.memberIds.length; }
       else if (d?.kind === "different") different++;
       else if (d?.kind === "hold") hold++;
     }
-    return { same, samePeople, different, hold, undecided: groups.length - same - different - hold };
-  }, [groups, decisions]);
+    return { same, samePeople, different, hold, undecided: clusters.length - same - different - hold };
+  }, [clusters, decisions]);
 
   const exactAvailable = useMemo(
-    () => groups.filter((g) => !decisions[g.person.id] && g.candidates.some((c) => c.reason === "exact")).length,
-    [groups, decisions],
+    () =>
+      clusters.filter(
+        (c) => !decisions[c.id] && c.members.filter((m) => m.reason === "exact").length >= 2,
+      ).length,
+    [clusters, decisions],
   );
 
   const buildActions = () => {
     const actions: { action: "merge" | "separate"; sourceId: string; targetId: string }[] = [];
-    for (const g of groups) {
-      const d = decisions[g.person.id];
+    for (const c of clusters) {
+      const d = decisions[c.id];
       if (!d || d.kind === "hold") continue;
       if (d.kind === "same") {
-        const members = membersOf(g, d);
-        const survivor =
-          members.find((m) => m.id === d.survivorId) ?? pickSurvivor(members);
-        for (const m of members) {
+        const checked = checkedOf(c, d);
+        if (checked.length < 2) continue; // 1 人だけのチェックは統合にならない
+        const survivor = checked.find((m) => m.id === d.survivorId) ?? pickSurvivor(checked);
+        for (const m of checked) {
           if (m.id !== survivor.id) {
             actions.push({ action: "merge", sourceId: m.id, targetId: survivor.id });
           }
         }
       } else {
-        // 「別人」はこのグループに出ている候補すべてを却下する。
-        for (const c of g.candidates) {
-          actions.push({ action: "separate", sourceId: g.person.id, targetId: c.person.id });
+        // 「どれも別人」は塊の中の全ペアを却下する（塊が再結成しないように）。
+        for (let i = 0; i < c.members.length; i++) {
+          for (let j = i + 1; j < c.members.length; j++) {
+            actions.push({
+              action: "separate",
+              sourceId: c.members[i].id,
+              targetId: c.members[j].id,
+            });
+          }
         }
       }
     }
@@ -1104,21 +1099,22 @@ function MatchModal({
       <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <div className="modal__title">
-            要確認 · <span className="num">{groups.length}</span>件
+            要確認 · <span className="num">{clusters.length}</span>件
           </div>
         </div>
         <div className="modal__body">
           <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
-            ファイル名の書き方が違うために別人として登録された可能性がある人物です。
-            <strong>同じ人物にチェックを入れてください（複数可）</strong>。
+            ファイル名の書き方が違うために別人として登録された可能性がある人物の
+            かたまりです。<strong>同じ人物にチェックを入れてください（複数可）</strong>。
             チェックした人物はまとめて 1 人に統合され、PDF とカテゴリが引き継がれます
             （カテゴリは全員分の和集合なので、どれを残しても失われません）。
-            該当が無ければ <strong>別人</strong>、後で決めるなら <strong>保留</strong>（何も記録せず次回もここに出ます）。
+            該当が無ければ <strong>どれも別人</strong>、後で決めるなら <strong>保留</strong>
+            （何も記録せず次回もここに出ます）。
             <br />
             ※ 統合してもLINEに届くメッセージのタイトルは変わりません。
           </p>
 
-          {groups.length === 0 ? (
+          {clusters.length === 0 ? (
             <div className="empty">確認が必要な人物はありません。</div>
           ) : (
             <>
@@ -1149,16 +1145,17 @@ function MatchModal({
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 400, overflowY: "auto" }}>
-                {groups.map((g) => {
-                  const d = decisions[g.person.id];
-                  const members = membersOf(g, d);
+                {clusters.map((c) => {
+                  const d = decisions[c.id];
+                  const checked = checkedOf(c, d);
+                  const survivorId = d?.kind === "same" ? d.survivorId : undefined;
                   const survivor =
-                    d?.kind === "same"
-                      ? members.find((m) => m.id === d.survivorId) ?? pickSurvivor(members)
+                    checked.length >= 2
+                      ? checked.find((m) => m.id === survivorId) ?? pickSurvivor(checked)
                       : null;
                   return (
                     <div
-                      key={g.person.id}
+                      key={c.id}
                       style={{
                         border: `1px solid ${d ? "var(--blue-border)" : "var(--border)"}`,
                         borderRadius: 5,
@@ -1167,31 +1164,15 @@ function MatchModal({
                         opacity: d?.kind === "hold" ? 0.55 : 1,
                       }}
                     >
-                      {/* 起点。この人物が誰と同じかを決める。 */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span className="badge">対象</span>
-                        <span style={{ fontSize: 13, fontWeight: 600 }}>{g.person.name}</span>
-                        <span className="text-mute" style={{ fontSize: 11 }}>カテゴリ未設定</span>
-                        {survivor && (
-                          survivor.id === g.person.id ? (
-                            <span className="badge badge--blue">統合先</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn--sm btn--ghost"
-                              onClick={() => chooseSurvivor(g.person.id, g.person.id)}
-                              disabled={resolving}
-                              title="この名前を残します"
-                            >
-                              統合先にする
-                            </button>
-                          )
-                        )}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: "var(--text-3)" }}>
+                          同じ人物にチェック（<span className="num">{c.members.length}</span>人・複数可）
+                        </span>
                         <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                           <button
                             type="button"
                             className={`chip ${d?.kind === "different" ? "is-active" : ""}`}
-                            onClick={() => toggleKind(g.person.id, "different")}
+                            onClick={() => toggleKind(c.id, "different")}
                             disabled={resolving}
                           >
                             どれも別人
@@ -1199,7 +1180,7 @@ function MatchModal({
                           <button
                             type="button"
                             className={`chip ${d?.kind === "hold" ? "is-active" : ""}`}
-                            onClick={() => toggleKind(g.person.id, "hold")}
+                            onClick={() => toggleKind(c.id, "hold")}
                             disabled={resolving}
                           >
                             保留
@@ -1207,15 +1188,11 @@ function MatchModal({
                         </span>
                       </div>
 
-                      <div style={{ fontSize: 11, color: "var(--text-3)", margin: "6px 0 2px" }}>
-                        同じ人物にチェック（複数可）
-                      </div>
-
-                      {g.candidates.map((c) => {
-                        const chosen = d?.kind === "same" && d.targetIds.includes(c.person.id);
+                      {c.members.map((m) => {
+                        const isChecked = d?.kind === "same" && d.memberIds.includes(m.id);
                         return (
                           <label
-                            key={c.person.id}
+                            key={m.id}
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -1228,29 +1205,29 @@ function MatchModal({
                           >
                             <input
                               type="checkbox"
-                              checked={chosen}
-                              onChange={() => toggleCandidate(g.person.id, c.person.id)}
+                              checked={isChecked}
+                              onChange={() => toggleMember(c.id, m.id)}
                               disabled={resolving}
                             />
                             <span
-                              className={`badge ${c.reason === "exact" ? "badge--blue" : "badge--purple"}`}
-                              title={`類似度 ${Math.round(c.score * 100)}%`}
+                              className={`badge ${m.reason === "exact" ? "badge--blue" : "badge--purple"}`}
+                              title={`類似度 ${Math.round(m.score * 100)}%`}
                             >
-                              {REASON_LABEL[c.reason]}
+                              {REASON_LABEL[m.reason]}
                             </span>
-                            <span style={{ fontSize: 13, fontWeight: 500 }}>{c.person.name}</span>
+                            <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
                             <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                              {c.person.categories.length > 0 ? (
-                                c.person.categories.map((cat) => (
+                              {m.categories.length > 0 ? (
+                                m.categories.map((cat) => (
                                   <span key={cat} className="badge badge--blue">{cat}</span>
                                 ))
                               ) : (
                                 <span className="text-mute" style={{ fontSize: 11 }}>カテゴリなし</span>
                               )}
                             </span>
-                            {chosen && (
+                            {isChecked && survivor && (
                               <span style={{ marginLeft: "auto" }}>
-                                {survivor?.id === c.person.id ? (
+                                {survivor.id === m.id ? (
                                   <span className="badge badge--blue">統合先</span>
                                 ) : (
                                   <button
@@ -1260,7 +1237,7 @@ function MatchModal({
                                       // label の中なのでチェックのトグルまで伝播させない
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      chooseSurvivor(g.person.id, c.person.id);
+                                      chooseSurvivor(c.id, m.id);
                                     }}
                                     disabled={resolving}
                                     title="この名前を残します"
@@ -1276,11 +1253,16 @@ function MatchModal({
 
                       {survivor && (
                         <div style={{ fontSize: 11, color: "var(--text-2)", marginTop: 8 }}>
-                          <span className="num">{members.length}</span>人を
+                          <span className="num">{checked.length}</span>人を
                           <strong>「{survivor.name}」</strong>にまとめます
                           <span style={{ color: "var(--text-3)" }}>
-                            {" "}— カテゴリは全員分をまとめて引き継ぎます。残す名前は「統合先にする」で変更できます
+                            {" "}— 残す名前は「統合先にする」で変更できます
                           </span>
+                        </div>
+                      )}
+                      {d?.kind === "same" && checked.length === 1 && (
+                        <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 8 }}>
+                          統合するには 2 人以上チェックしてください
                         </div>
                       )}
                     </div>
@@ -1296,14 +1278,14 @@ function MatchModal({
           </button>
           <button
             className="btn btn--primary"
-            disabled={resolving || pending === 0}
+            disabled={resolving || buildActions().length === 0}
             onClick={() => {
               const actions = buildActions();
               const parts = [
                 counts.same > 0
                   ? `同一 ${counts.same}組（${counts.samePeople}人を統合します）`
                   : null,
-                counts.different > 0 ? `別人 ${counts.different}件` : null,
+                counts.different > 0 ? `別人 ${counts.different}組` : null,
               ].filter(Boolean).join("\n");
               if (confirm(`次の内容で確定します。\n\n${parts}\n\nよろしいですか？`)) {
                 onApply(actions);
