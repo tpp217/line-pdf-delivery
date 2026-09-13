@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
+import { loadMatchIndex, resolvePersonForFile, type ResolveOutcome } from '@/lib/person-match'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
 import JSZip from 'jszip'
@@ -86,6 +87,12 @@ export async function POST(request: NextRequest) {
 
   const documentIds: string[] = []
 
+  // 人物の解決に使う索引（既存人物・エイリアス・却下ペア・書類名辞書）を
+  // バッチの先頭で 1 回だけ読む。ループ内で新規作成した人物も index に入るので、
+  // 同じバッチに同一人物のファイルが複数あっても 1 人にまとまる。
+  const matchIndex = await loadMatchIndex(tenantId)
+  const matched: Record<ResolveOutcome, number> = { alias: 0, key: 0, created: 0 }
+
   for (const pdf of pdfs) {
     const storagePath = `${batch.id}/${randomUUID()}.pdf`
 
@@ -101,16 +108,12 @@ export async function POST(request: NextRequest) {
       continue
     }
 
-    const personName = pdf.name.replace(/\.pdf$/i, '')
-
-    const { data: person } = await supabase
-      .from('persons')
-      .upsert(
-        { tenant_id: tenantId, name: personName },
-        { onConflict: 'tenant_id,name' },
-      )
-      .select('id')
-      .single()
+    // ファイル名 → 人物。エイリアス → 正規化キー完全一致 → 新規作成 の順。
+    // あいまい一致でここが既存人物へ寄ることはない（誤配信を出さないため）。
+    // 似た人物がいる場合は画面の「要確認」に候補として出る。
+    const resolved = await resolvePersonForFile(matchIndex, pdf.name)
+    const personName = resolved.personName
+    matched[resolved.outcome]++
 
     const { data: doc, error: docErr } = await supabase
       .from('pdf_documents')
@@ -123,7 +126,7 @@ export async function POST(request: NextRequest) {
         fileSizeBytes: pdf.size,
         extractStatus: 'DONE',
         personName,
-        personId: person?.id || null,
+        personId: resolved.personId,
       })
       .select('id')
       .single()
@@ -137,6 +140,10 @@ export async function POST(request: NextRequest) {
       acceptedFiles: documentIds.length,
       ignoredFiles: totalFiles - pdfs.length,
       documentIds,
+      // 内訳。画面は newPersons > 0 のときに「要確認」へ誘導する。
+      matchedByAlias: matched.alias,
+      matchedByName: matched.key,
+      newPersons: matched.created,
     },
     { status: 201 },
   )
