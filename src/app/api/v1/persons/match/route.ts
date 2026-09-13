@@ -1,4 +1,4 @@
-import { buildCandidateGroups, loadMatchIndex } from '@/lib/person-match'
+import { buildCandidateClusters, loadMatchIndex } from '@/lib/person-match'
 import { applyMatchActions, type MatchAction } from '@/lib/person-merge'
 import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { NextRequest } from 'next/server'
@@ -16,13 +16,18 @@ import { NextRequest } from 'next/server'
 /** 1 リクエストで受け付ける指示の上限。画面の一括確定でも十分な数。 */
 const MAX_ACTIONS = 200
 
-/** GET: { items: [{ person, candidates: [{ person, reason, score }] }] } */
+/**
+ * GET: { items: [{ id, members: [{ id, name, categories, key, reason, score }] }] }
+ *
+ * 1 件 = 同一人物かもしれない人物の「塊」。人物ごとではなく塊ごとに返すので、
+ * 同じ顔ぶれが何度も並ばない。
+ */
 export async function GET(request: NextRequest) {
   const tenantId = await resolveTenantId(request)
   if (!tenantId) return unauthenticatedTenant()
 
   const index = await loadMatchIndex(tenantId)
-  return Response.json({ items: buildCandidateGroups(index) })
+  return Response.json({ items: buildCandidateClusters(index) })
 }
 
 function parseAction(raw: unknown): MatchAction | null {
