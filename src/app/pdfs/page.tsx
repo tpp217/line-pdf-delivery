@@ -924,11 +924,31 @@ function PeriodModal({
   );
 }
 
-/** 要確認の 1 グループに対する判断。保留はサーバーに何も送らない。 */
+/**
+ * 要確認の 1 グループに対する判断。
+ *
+ * same の targetIds は「起点と同じ人物だとチェックした候補」。実データでは
+ * 「奥村 / 奥村華月 / 給与支払明細書_奥村華月」のように 3 件以上が同一人物という
+ * グループが大半（26 グループ中 24 が候補 3 件以上）なので、複数選べる必要がある。
+ * 保留はサーバーに何も送らない。
+ */
 type MatchDecision =
-  | { kind: "same"; targetId: string }
+  | { kind: "same"; targetIds: string[] }
   | { kind: "different" }
   | { kind: "hold" };
+
+type MatchPersonView = { id: string; name: string; categories: string[] };
+
+/**
+ * 統合先（生き残る人物）を決める。
+ *
+ * カテゴリが付いている人物を優先する。カテゴリは配信の絞り込みと送信先解決を
+ * 兼ねるので、設定済みの側に寄せるのが最も情報が減らない。該当が無ければ起点を残す。
+ * （カテゴリはどちらにせよ和集合で寄せるので、どれを選んでも失われはしない）
+ */
+function pickSurvivor(members: MatchPersonView[]): MatchPersonView {
+  return members.find((m) => m.categories.length > 0) ?? members[0];
+}
 
 /**
  * 「要確認」モーダル。
@@ -937,8 +957,7 @@ type MatchDecision =
  * 同一人物かもしれない候補を出して人が確定する。ここで確定するまで
  * システムは絶対に別人物を勝手にまとめない（他人の給与明細を配信しないため）。
  *
- * 件数が多くなりがちなので、1 件ずつ即時実行せず「同一 / 別人 / 保留」を選んでから
- * まとめて確定する。保留は何も記録しないので、次回もそのまま候補に出る。
+ * 件数が多いので 1 件ずつ即時実行はせず、チェックしてから最後にまとめて確定する。
  */
 function MatchModal({
   groups,
@@ -962,39 +981,55 @@ function MatchModal({
     });
   };
 
-  // 同じ選択をもう一度押したら解除（＝未選択に戻す）。
-  const toggleSame = (personId: string, targetId: string) => {
-    const cur = decisions[personId];
-    const isOn = cur?.kind === "same" && cur.targetId === targetId;
-    setDecision(personId, isOn ? null : { kind: "same", targetId });
+  // 候補のチェックは複数可。全部外したら未選択に戻す。
+  const toggleCandidate = (personId: string, candidateId: string) => {
+    setDecisions((prev) => {
+      const cur = prev[personId];
+      const checked = cur?.kind === "same" ? cur.targetIds : [];
+      const next = checked.includes(candidateId)
+        ? checked.filter((x) => x !== candidateId)
+        : [...checked, candidateId];
+      const copy = { ...prev };
+      if (next.length === 0) delete copy[personId];
+      else copy[personId] = { kind: "same", targetIds: next };
+      return copy;
+    });
   };
+
   const toggleKind = (personId: string, kind: "different" | "hold") => {
     const cur = decisions[personId];
     setDecision(personId, cur?.kind === kind ? null : { kind });
   };
 
-  // 完全一致は正規化後の文字列が一致しているので、まとめて選んでも誤りようがない。
+  // 完全一致は正規化後の文字列が一致しているので、まとめて選んでも取り違えようがない。
   const selectAllExact = () => {
     setDecisions((prev) => {
       const next = { ...prev };
       for (const g of groups) {
         if (next[g.person.id]) continue;
-        const exact = g.candidates.find((c) => c.reason === "exact");
-        if (exact) next[g.person.id] = { kind: "same", targetId: exact.person.id };
+        const exact = g.candidates.filter((c) => c.reason === "exact").map((c) => c.person.id);
+        if (exact.length > 0) next[g.person.id] = { kind: "same", targetIds: exact };
       }
       return next;
     });
   };
 
+  /** グループの起点＋チェック済み候補。統合対象になる人物の一覧。 */
+  const membersOf = (g: MatchGroup, d: MatchDecision | undefined): MatchPersonView[] => {
+    if (d?.kind !== "same") return [g.person];
+    const checked = g.candidates.filter((c) => d.targetIds.includes(c.person.id));
+    return [g.person, ...checked.map((c) => c.person)];
+  };
+
   const counts = useMemo(() => {
-    let same = 0, different = 0, hold = 0;
+    let same = 0, samePeople = 0, different = 0, hold = 0;
     for (const g of groups) {
       const d = decisions[g.person.id];
-      if (d?.kind === "same") same++;
+      if (d?.kind === "same") { same++; samePeople += d.targetIds.length + 1; }
       else if (d?.kind === "different") different++;
       else if (d?.kind === "hold") hold++;
     }
-    return { same, different, hold, undecided: groups.length - same - different - hold };
+    return { same, samePeople, different, hold, undecided: groups.length - same - different - hold };
   }, [groups, decisions]);
 
   const exactAvailable = useMemo(
@@ -1008,7 +1043,13 @@ function MatchModal({
       const d = decisions[g.person.id];
       if (!d || d.kind === "hold") continue;
       if (d.kind === "same") {
-        actions.push({ action: "merge", sourceId: g.person.id, targetId: d.targetId });
+        const members = membersOf(g, d);
+        const survivor = pickSurvivor(members);
+        for (const m of members) {
+          if (m.id !== survivor.id) {
+            actions.push({ action: "merge", sourceId: m.id, targetId: survivor.id });
+          }
+        }
       } else {
         // 「別人」はこのグループに出ている候補すべてを却下する。
         for (const c of g.candidates) {
@@ -1032,11 +1073,9 @@ function MatchModal({
         <div className="modal__body">
           <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
             ファイル名の書き方が違うために別人として登録された可能性がある人物です。
-            それぞれ <strong>同一 / 別人 / 保留</strong> を選び、最後にまとめて確定します。
-            <br />
-            <strong>同一</strong>…その候補にPDFとカテゴリを統合し、次回から同じ書き方のファイルが自動で紐付きます。
-            <strong>別人</strong>…以後この組み合わせは表示しません。
-            <strong>保留</strong>…何も記録せず、次回もここに出ます。
+            <strong>同じ人物にチェックを入れてください（複数可）</strong>。
+            チェックした人物はまとめて 1 人に統合され、PDF とカテゴリが引き継がれます。
+            該当が無ければ <strong>別人</strong>、後で決めるなら <strong>保留</strong>（何も記録せず次回もここに出ます）。
             <br />
             ※ 統合してもLINEに届くメッセージのタイトルは変わりません。
           </p>
@@ -1045,18 +1084,15 @@ function MatchModal({
             <div className="empty">確認が必要な人物はありません。</div>
           ) : (
             <>
-              <div
-                className="toolbar"
-                style={{ marginBottom: 10, gap: 8, alignItems: "center", flexWrap: "wrap" }}
-              >
+              <div className="toolbar" style={{ marginBottom: 10, gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   className="btn btn--sm"
                   onClick={selectAllExact}
                   disabled={resolving || exactAvailable === 0}
-                  title="正規化後の名前が完全に一致しているものだけを選びます"
+                  title="正規化後の名前が完全に一致しているものだけをチェックします"
                 >
-                  完全一致をすべて同一に（{exactAvailable}）
+                  完全一致をすべてチェック（{exactAvailable}）
                 </button>
                 <button
                   type="button"
@@ -1067,7 +1103,7 @@ function MatchModal({
                   選択をクリア
                 </button>
                 <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: "auto" }}>
-                  同一 <span className="num">{counts.same}</span> ／ 別人{" "}
+                  同一 <span className="num">{counts.same}</span>組 ／ 別人{" "}
                   <span className="num">{counts.different}</span> ／ 保留{" "}
                   <span className="num">{counts.hold}</span> ／ 未選択{" "}
                   <span className="num">{counts.undecided}</span>
@@ -1077,25 +1113,24 @@ function MatchModal({
               <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 400, overflowY: "auto" }}>
                 {groups.map((g) => {
                   const d = decisions[g.person.id];
-                  const decided = d !== undefined;
+                  const members = membersOf(g, d);
+                  const survivor = d?.kind === "same" ? pickSurvivor(members) : null;
                   return (
                     <div
                       key={g.person.id}
                       style={{
-                        border: `1px solid ${decided ? "var(--blue-border)" : "var(--border)"}`,
+                        border: `1px solid ${d ? "var(--blue-border)" : "var(--border)"}`,
                         borderRadius: 5,
                         padding: 10,
                         background: "var(--surface)",
-                        opacity: d?.kind === "hold" ? 0.6 : 1,
+                        opacity: d?.kind === "hold" ? 0.55 : 1,
                       }}
                     >
+                      {/* 起点。この人物が誰と同じかを決める。 */}
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{g.person.name}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-                            カテゴリ未設定 — このままでは一括送信の対象になりません
-                          </div>
-                        </div>
+                        <span className="badge">対象</span>
+                        <span style={{ fontSize: 13, fontWeight: 600 }}>{g.person.name}</span>
+                        <span className="text-mute" style={{ fontSize: 11 }}>カテゴリ未設定</span>
                         <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                           <button
                             type="button"
@@ -1103,7 +1138,7 @@ function MatchModal({
                             onClick={() => toggleKind(g.person.id, "different")}
                             disabled={resolving}
                           >
-                            別人
+                            どれも別人
                           </button>
                           <button
                             type="button"
@@ -1116,10 +1151,14 @@ function MatchModal({
                         </span>
                       </div>
 
+                      <div style={{ fontSize: 11, color: "var(--text-3)", margin: "6px 0 2px" }}>
+                        同じ人物にチェック（複数可）
+                      </div>
+
                       {g.candidates.map((c) => {
-                        const chosen = d?.kind === "same" && d.targetId === c.person.id;
+                        const chosen = d?.kind === "same" && d.targetIds.includes(c.person.id);
                         return (
-                          <div
+                          <label
                             key={c.person.id}
                             style={{
                               display: "flex",
@@ -1128,9 +1167,15 @@ function MatchModal({
                               flexWrap: "wrap",
                               padding: "6px 0",
                               borderTop: "1px solid var(--border)",
-                              marginTop: 6,
+                              cursor: resolving ? "default" : "pointer",
                             }}
                           >
+                            <input
+                              type="checkbox"
+                              checked={chosen}
+                              onChange={() => toggleCandidate(g.person.id, c.person.id)}
+                              disabled={resolving}
+                            />
                             <span
                               className={`badge ${c.reason === "exact" ? "badge--blue" : "badge--purple"}`}
                               title={`類似度 ${Math.round(c.score * 100)}%`}
@@ -1147,18 +1192,22 @@ function MatchModal({
                                 <span className="text-mute" style={{ fontSize: 11 }}>カテゴリなし</span>
                               )}
                             </span>
-                            <button
-                              type="button"
-                              className={`chip ${chosen ? "is-active" : ""}`}
-                              style={{ marginLeft: "auto" }}
-                              onClick={() => toggleSame(g.person.id, c.person.id)}
-                              disabled={resolving}
-                            >
-                              {chosen ? "✓ 同一" : "同一"}
-                            </button>
-                          </div>
+                            {survivor?.id === c.person.id && (
+                              <span className="badge badge--blue" style={{ marginLeft: "auto" }}>
+                                統合先
+                              </span>
+                            )}
+                          </label>
                         );
                       })}
+
+                      {survivor && (
+                        <div style={{ fontSize: 11, color: "var(--text-2)", marginTop: 8 }}>
+                          <span className="num">{members.length}</span>人を
+                          <strong>「{survivor.name}」</strong>にまとめます
+                          {survivor.id === g.person.id && "（候補にカテゴリが無いため対象を残します）"}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1176,7 +1225,9 @@ function MatchModal({
             onClick={() => {
               const actions = buildActions();
               const parts = [
-                counts.same > 0 ? `同一 ${counts.same}件（PDFとカテゴリを統合します）` : null,
+                counts.same > 0
+                  ? `同一 ${counts.same}組（${counts.samePeople}人を統合します）`
+                  : null,
                 counts.different > 0 ? `別人 ${counts.different}件` : null,
               ].filter(Boolean).join("\n");
               if (confirm(`次の内容で確定します。\n\n${parts}\n\nよろしいですか？`)) {
