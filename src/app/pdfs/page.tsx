@@ -259,9 +259,15 @@ export default function PdfsPage() {
       if (res.ok) {
         const r = await res.json();
         const reused = (r.matchedByName ?? 0) + (r.matchedByAlias ?? 0);
+        const skipped = r.skippedDuplicates ?? 0;
         alert(
           [
-            `${r.acceptedFiles}件のPDFを登録しました`,
+            r.acceptedFiles > 0
+              ? `${r.acceptedFiles}件のPDFを登録しました`
+              : "新しく登録したPDFはありません",
+            skipped > 0
+              ? `${skipped}件は中身が既存のPDFと同一のためスキップしました`
+              : null,
             reused > 0 ? `既存の人物に紐付け: ${reused}件` : null,
             r.newPersons > 0
               ? `新しい人物として登録: ${r.newPersons}件\n（同一人物の可能性があるものは「要確認」から確定できます）`
