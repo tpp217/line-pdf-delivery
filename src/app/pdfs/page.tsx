@@ -25,6 +25,30 @@ type Recipient = {
 
 type CategoryRecipientMap = Record<string, string[]>;
 
+type MatchReason = "exact" | "prefix" | "fuzzy";
+
+type MatchCandidate = {
+  person: { id: string; name: string; categories: string[] };
+  reason: MatchReason;
+  score: number;
+};
+
+type MatchGroup = {
+  person: { id: string; name: string; categories: string[] };
+  candidates: MatchCandidate[];
+};
+
+// カテゴリ未設定を表す擬似カテゴリ。
+// 未設定の人物は従来カテゴリ絞り込みから「消える」だけだったので、
+// 一括送信から漏れていることに気づけなかった。明示的に選べるようにする。
+const UNCATEGORIZED = "__uncategorized__";
+
+const REASON_LABEL: Record<MatchReason, string> = {
+  exact: "完全一致",
+  prefix: "姓のみ / フルネーム",
+  fuzzy: "表記ゆれの疑い",
+};
+
 async function readAllEntries(entry: FileSystemEntry, result: File[]): Promise<void> {
   if (entry.isFile) {
     const file = await new Promise<File>((resolve) => (entry as FileSystemFileEntry).file(resolve));
@@ -61,15 +85,20 @@ export default function PdfsPage() {
   const [catInput, setCatInput] = useState("");
   const [editingCats, setEditingCats] = useState<string[]>([]);
   const [catRecipientMap, setCatRecipientMap] = useState<CategoryRecipientMap>({});
+  const [matchGroups, setMatchGroups] = useState<MatchGroup[]>([]);
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [showTokenModal, setShowTokenModal] = useState(false);
+  const [resolving, setResolving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const [pRes, persRes, rRes, crRes] = await Promise.all([
+    const [pRes, persRes, rRes, crRes, mRes] = await Promise.all([
       fetch("/api/v1/pdfs?page=1&pageSize=1000"),
       fetch("/api/v1/persons"),
       fetch("/api/v1/recipients?isActive=true"),
       fetch("/api/v1/category-recipients"),
+      fetch("/api/v1/persons/match"),
     ]);
     const pData = await pRes.json();
     setAllPdfs(pData.items || []);
@@ -81,6 +110,8 @@ export default function PdfsPage() {
       map[it.category] = it.recipientIds;
     }
     setCatRecipientMap(map);
+    const mData = await mRes.json();
+    setMatchGroups((mData.items ?? []) as MatchGroup[]);
     setLoading(false);
   }, []);
 
@@ -115,29 +146,73 @@ export default function PdfsPage() {
     return Array.from(s).sort().reverse();
   }, [yearPdfs]);
 
+  // PDF に紐づく人物のカテゴリ。人物が未解決／カテゴリ未設定なら空配列。
+  const catsOf = useCallback(
+    (p: PdfDocument) => (p.personId ? personCatMap.get(p.personId) ?? [] : []),
+    [personCatMap],
+  );
+
+  // 選択カテゴリに合致するか。カテゴリ未設定のPDFは「未分類」を選んだときだけ残る。
+  const matchesSelection = useCallback(
+    (p: PdfDocument, sel: string[]) => {
+      const cats = catsOf(p);
+      if (cats.length === 0) return sel.includes(UNCATEGORIZED);
+      return cats.some((c) => sel.includes(c));
+    },
+    [catsOf],
+  );
+
+  // 「選択順でソート」用の順位。未分類は擬似カテゴリの選択位置を使う。
+  const selectionRank = useCallback(
+    (p: PdfDocument, sel: string[]) => {
+      const cats = catsOf(p);
+      if (cats.length === 0) return sel.indexOf(UNCATEGORIZED);
+      let best = Number.MAX_SAFE_INTEGER;
+      for (const c of cats) {
+        const i = sel.indexOf(c);
+        if (i >= 0 && i < best) best = i;
+      }
+      return best === Number.MAX_SAFE_INTEGER ? sel.length : best;
+    },
+    [catsOf],
+  );
+
+  const monthPdfs = useMemo(
+    () =>
+      selectedMonth === "all"
+        ? yearPdfs
+        : yearPdfs.filter((p) => toMonth(p.uploadedAt) === selectedMonth),
+    [yearPdfs, selectedMonth],
+  );
+
+  // 現在の年月スコープでカテゴリが付いていないPDFの件数。
+  // 0 でなければカテゴリ絞り込み＝一括送信から漏れる可能性がある。
+  const uncategorizedCount = useMemo(
+    () => monthPdfs.filter((p) => catsOf(p).length === 0).length,
+    [monthPdfs, catsOf],
+  );
+
+  // 選択中のPDFのうちカテゴリ未設定のもの（送信前の警告に使う）。
+  const selectedUncategorized = useMemo(
+    () => allPdfs.filter((p) => selected.has(p.id) && catsOf(p).length === 0).length,
+    [allPdfs, selected, catsOf],
+  );
+
   const filteredPdfs = useMemo(() => {
-    let result = selectedMonth === "all" ? yearPdfs : yearPdfs.filter((p) => toMonth(p.uploadedAt) === selectedMonth);
-    if (selectedCategories.length > 0) {
-      // OR 絞り込み：選択カテゴリのどれかに属する人物のPDFを残す
-      result = result.filter((p) => {
-        const cats = p.personId ? personCatMap.get(p.personId) : [];
-        return cats?.some((c) => selectedCategories.includes(c)) ?? false;
-      });
-      // 選択順でソート → 同カテゴリ内は氏名 → ファイル名
-      result = [...result].sort((a, b) => {
-        const aCats = (a.personId ? personCatMap.get(a.personId) : []) ?? [];
-        const bCats = (b.personId ? personCatMap.get(b.personId) : []) ?? [];
-        const aIdx = selectedCategories.findIndex((c) => aCats.includes(c));
-        const bIdx = selectedCategories.findIndex((c) => bCats.includes(c));
-        if (aIdx !== bIdx) return aIdx - bIdx;
-        const aName = a.personName ?? "";
-        const bName = b.personName ?? "";
-        if (aName !== bName) return aName.localeCompare(bName, "ja");
-        return a.originalFileName.localeCompare(b.originalFileName, "ja");
-      });
-    }
-    return result;
-  }, [yearPdfs, selectedMonth, selectedCategories, personCatMap]);
+    if (selectedCategories.length === 0) return monthPdfs;
+    // OR 絞り込み：選択カテゴリのどれかに属する人物のPDFを残す
+    const result = monthPdfs.filter((p) => matchesSelection(p, selectedCategories));
+    // 選択順でソート → 同カテゴリ内は氏名 → ファイル名
+    return [...result].sort((a, b) => {
+      const aIdx = selectionRank(a, selectedCategories);
+      const bIdx = selectionRank(b, selectedCategories);
+      if (aIdx !== bIdx) return aIdx - bIdx;
+      const aName = a.personName ?? "";
+      const bName = b.personName ?? "";
+      if (aName !== bName) return aName.localeCompare(bName, "ja");
+      return a.originalFileName.localeCompare(b.originalFileName, "ja");
+    });
+  }, [monthPdfs, selectedCategories, matchesSelection, selectionRank]);
 
   useEffect(() => {
     if (!initialized && years.length > 0) {
@@ -165,16 +240,7 @@ export default function PdfsPage() {
       setSelected(new Set());
       return;
     }
-    const base = selectedMonth === "all"
-      ? yearPdfs
-      : yearPdfs.filter((p) => toMonth(p.uploadedAt) === selectedMonth);
-    const ids = base
-      .filter((p) => {
-        const cats = p.personId ? personCatMap.get(p.personId) : [];
-        return cats?.some((c) => next.includes(c)) ?? false;
-      })
-      .map((p) => p.id);
-    setSelected(new Set(ids));
+    setSelected(new Set(monthPdfs.filter((p) => matchesSelection(p, next)).map((p) => p.id)));
   };
 
   const handleClearCategories = () => {
@@ -192,7 +258,18 @@ export default function PdfsPage() {
       const res = await fetch("/api/v1/uploads/folder", { method: "POST", body: formData });
       if (res.ok) {
         const r = await res.json();
-        alert(`${r.acceptedFiles}件のPDFを登録しました`);
+        const reused = (r.matchedByName ?? 0) + (r.matchedByAlias ?? 0);
+        alert(
+          [
+            `${r.acceptedFiles}件のPDFを登録しました`,
+            reused > 0 ? `既存の人物に紐付け: ${reused}件` : null,
+            r.newPersons > 0
+              ? `新しい人物として登録: ${r.newPersons}件\n（同一人物の可能性があるものは「要確認」から確定できます）`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        );
         fetchData();
       } else {
         alert(`エラー: ${(await res.json()).error}`);
@@ -282,6 +359,32 @@ export default function PdfsPage() {
     fetchData();
   };
 
+  // 「要確認」の確定。merge = 同一人物として統合、separate = 別人として以後出さない。
+  // 統合しても pdf_documents.personName は書き換えないので、LINE に届く文面は変わらない。
+  const resolveMatch = async (
+    action: "merge" | "separate",
+    sourceId: string,
+    targetId: string,
+  ) => {
+    setResolving(true);
+    try {
+      const res = await fetch("/api/v1/persons/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, sourceId, targetId }),
+      });
+      if (!res.ok) {
+        alert(`エラー: ${(await res.json()).error ?? "不明"}`);
+        return;
+      }
+      await fetchData();
+    } catch (e) {
+      alert(`通信エラー: ${e instanceof Error ? e.message : "不明"}`);
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
@@ -356,7 +459,7 @@ export default function PdfsPage() {
           )}
 
           {/* カテゴリ（複数選択・選択順でソート） */}
-          {allCategories.length > 0 && (
+          {(allCategories.length > 0 || uncategorizedCount > 0) && (
             <div className="toolbar" style={{ marginBottom: 14 }}>
               <span className="toolbar__label">カテゴリ</span>
               <button
@@ -379,11 +482,41 @@ export default function PdfsPage() {
                   </button>
                 );
               })}
+              {/* 未分類：カテゴリが付いていない＝一括送信から漏れるPDFを可視化する。
+                  ファイル名の表記ゆれで人物が別扱いになると必ずここに現れる。 */}
+              {uncategorizedCount > 0 && (
+                <button
+                  onClick={() => handleToggleCategory(UNCATEGORIZED)}
+                  className={`chip ${selectedCategories.includes(UNCATEGORIZED) ? "is-active" : ""}`}
+                  title="カテゴリが設定されていないPDF。このままでは一括送信の対象になりません。"
+                >
+                  未分類
+                  <span className="chip__count num">{uncategorizedCount}</span>
+                </button>
+              )}
               {selectedCategories.length >= 2 && (
                 <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 4 }}>
                   選択順でソート
                 </span>
               )}
+              <span style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
+                {matchGroups.length > 0 && (
+                  <button
+                    onClick={() => setShowMatchModal(true)}
+                    className="btn btn--sm"
+                    title="同一人物の可能性がある人物の候補を確認します"
+                  >
+                    要確認 <span className="num">{matchGroups.length}</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowTokenModal(true)}
+                  className="btn btn--sm btn--ghost"
+                  title="ファイル名から取り除く書類名を設定します"
+                >
+                  ファイル名の設定
+                </button>
+              </span>
             </div>
           )}
 
@@ -553,12 +686,31 @@ export default function PdfsPage() {
         </div>
       )}
 
+      {/* 要確認（同一人物の候補）モーダル */}
+      {showMatchModal && (
+        <MatchModal
+          groups={matchGroups}
+          resolving={resolving}
+          onResolve={resolveMatch}
+          onClose={() => setShowMatchModal(false)}
+        />
+      )}
+
+      {/* ファイル名の設定（書類名トークン辞書）モーダル */}
+      {showTokenModal && (
+        <TokenModal
+          onClose={() => setShowTokenModal(false)}
+          onChanged={fetchData}
+        />
+      )}
+
       {/* LINE送信モーダル */}
       {showSendModal && (
         <SendModal
           selected={selected}
           recipients={recipients}
           sending={sending}
+          uncategorizedCount={selectedUncategorized}
           onSend={handleSend}
           onClose={() => setShowSendModal(false)}
           preselectRecipientIds={Array.from(
@@ -572,10 +724,278 @@ export default function PdfsPage() {
   );
 }
 
+/**
+ * 「要確認」モーダル。
+ *
+ * 取り込み時に既存人物へ寄せられなかった人物（＝カテゴリ未設定で残っている人物）に対し、
+ * 同一人物かもしれない候補を出して人が確定する。ここで確定するまで
+ * システムは絶対に別人物を勝手にまとめない（他人の給与明細を配信しないため）。
+ */
+function MatchModal({
+  groups,
+  resolving,
+  onResolve,
+  onClose,
+}: {
+  groups: MatchGroup[];
+  resolving: boolean;
+  onResolve: (action: "merge" | "separate", sourceId: string, targetId: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="modal__backdrop" onClick={onClose}>
+      <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <div className="modal__title">
+            要確認 · <span className="num">{groups.length}</span>件
+          </div>
+        </div>
+        <div className="modal__body">
+          <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
+            ファイル名の書き方が違うために別人として登録された可能性がある人物です。
+            <strong>同一人物</strong> にまとめると、その人物のPDF・カテゴリが統合され、
+            次回以降は同じ書き方のファイルが自動で紐付きます。
+            <strong>別人</strong> を選ぶと、以後この組み合わせは表示されません。
+            <br />
+            ※ 統合してもLINEに届くメッセージのタイトルは変わりません。
+          </p>
+
+          {groups.length === 0 ? (
+            <div className="empty">確認が必要な人物はありません。</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, maxHeight: 420, overflowY: "auto" }}>
+              {groups.map((g) => (
+                <div
+                  key={g.person.id}
+                  style={{
+                    border: "1px solid var(--border)",
+                    borderRadius: 5,
+                    padding: 10,
+                    background: "var(--surface)",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>
+                    {g.person.name}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginBottom: 8 }}>
+                    カテゴリ未設定 — このままでは一括送信の対象になりません
+                  </div>
+
+                  {g.candidates.map((c) => (
+                    <div
+                      key={c.person.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        flexWrap: "wrap",
+                        padding: "6px 0",
+                        borderTop: "1px solid var(--border)",
+                      }}
+                    >
+                      <span
+                        className={`badge ${c.reason === "exact" ? "badge--blue" : "badge--purple"}`}
+                        title={`類似度 ${Math.round(c.score * 100)}%`}
+                      >
+                        {REASON_LABEL[c.reason]}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 500 }}>{c.person.name}</span>
+                      <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {c.person.categories.length > 0 ? (
+                          c.person.categories.map((cat) => (
+                            <span key={cat} className="badge badge--blue">{cat}</span>
+                          ))
+                        ) : (
+                          <span className="text-mute" style={{ fontSize: 11 }}>カテゴリなし</span>
+                        )}
+                      </span>
+                      <span style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+                        <button
+                          className="btn btn--sm btn--primary"
+                          disabled={resolving}
+                          onClick={() => {
+                            if (
+                              confirm(
+                                `「${g.person.name}」を「${c.person.name}」と同一人物としてまとめます。\n` +
+                                  `「${g.person.name}」のPDFは「${c.person.name}」に移り、以後同じ書き方のファイルは自動で紐付きます。`,
+                              )
+                            ) {
+                              onResolve("merge", g.person.id, c.person.id);
+                            }
+                          }}
+                        >
+                          同一人物
+                        </button>
+                        <button
+                          className="btn btn--sm btn--ghost"
+                          disabled={resolving}
+                          onClick={() => onResolve("separate", g.person.id, c.person.id)}
+                        >
+                          別人
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="modal__foot">
+          <button onClick={onClose} className="btn" disabled={resolving}>
+            {resolving ? "処理中…" : "閉じる"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ファイル名の設定（書類名トークン辞書）モーダル。
+ *
+ * 「給与支払明細書_奥村華月.pdf」の「給与支払明細書」のように、
+ * 氏名の前後に付く書類名をファイル名から取り除いて人物を同定するための辞書。
+ * クライアントごとに付け方が違うので、コードを触らず画面から足せるようにしている。
+ */
+function TokenModal({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+  const [tokens, setTokens] = useState<string[]>([]);
+  const [defaults, setDefaults] = useState<string[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  // 再読み込みはカウンタを進めて effect を再実行させる。
+  // effect の同期実行中に setState しない形（await の後だけで setState する）に
+  // しておくのは react-hooks/set-state-in-effect のため。
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = () => setReloadKey((k) => k + 1);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const res = await fetch("/api/v1/person-key-tokens");
+      if (!alive) return;
+      if (res.ok) {
+        const d = await res.json();
+        if (!alive) return;
+        setTokens(d.tokens ?? []);
+        setDefaults(d.defaults ?? []);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [reloadKey]);
+
+  const add = async () => {
+    const token = input.trim();
+    if (!token) return;
+    setBusy(true);
+    const res = await fetch("/api/v1/person-key-tokens", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    });
+    if (!res.ok) alert(`エラー: ${(await res.json()).error ?? "不明"}`);
+    setInput("");
+    reload();
+    setBusy(false);
+    onChanged();
+  };
+
+  const remove = async (token: string) => {
+    setBusy(true);
+    await fetch(`/api/v1/person-key-tokens?token=${encodeURIComponent(token)}`, {
+      method: "DELETE",
+    });
+    reload();
+    setBusy(false);
+    onChanged();
+  };
+
+  return (
+    <div className="modal__backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <div className="modal__title">ファイル名の設定</div>
+        </div>
+        <div className="modal__body">
+          <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
+            ファイル名から取り除く<strong>書類名</strong>を登録します。
+            例として「給与支払明細書」を登録すると
+            <code>給与支払明細書_奥村華月.pdf</code> と <code>奥村華月.pdf</code> が
+            同じ人物として扱われます。日付・連番・全角半角・区切り記号は登録なしで自動的に無視されます。
+          </p>
+
+          <div className="field__label">追加する書類名</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+            <input
+              type="text"
+              className="input"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  add();
+                }
+              }}
+              placeholder="例: 〇〇株式会社"
+              style={{ flex: 1 }}
+              disabled={busy}
+            />
+            <button type="button" onClick={add} className="btn" disabled={busy || !input.trim()}>
+              追加
+            </button>
+          </div>
+
+          <div className="field__label">このシステムに登録済み</div>
+          {loading ? (
+            <p style={{ fontSize: 12, color: "var(--text-3)" }}>読み込み中…</p>
+          ) : tokens.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--text-3)", margin: "0 0 12px" }}>
+              まだありません（下の既定の書類名だけが使われます）
+            </p>
+          ) : (
+            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 12 }}>
+              {tokens.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => remove(t)}
+                  className="badge badge--blue"
+                  style={{ cursor: "pointer", border: "none", fontFamily: "inherit" }}
+                  title="クリックで削除"
+                  disabled={busy}
+                >
+                  {t} <span style={{ opacity: 0.6 }}>×</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="field__label">既定で取り除く書類名（変更不可）</div>
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {defaults.map((t) => (
+              <span key={t} className="badge" style={{ opacity: 0.7 }}>{t}</span>
+            ))}
+          </div>
+        </div>
+        <div className="modal__foot">
+          <button onClick={onClose} className="btn" disabled={busy}>閉じる</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SendModal({
   selected,
   recipients,
   sending,
+  uncategorizedCount,
   onSend,
   onClose,
   preselectRecipientIds,
@@ -583,6 +1003,7 @@ function SendModal({
   selected: Set<string>;
   recipients: Recipient[];
   sending: boolean;
+  uncategorizedCount: number;
   onSend: (recipientIds: string[]) => void;
   onClose: () => void;
   preselectRecipientIds: string[];
@@ -607,6 +1028,32 @@ function SendModal({
           <div className="modal__title">LINE送信 · <span className="num">{selected.size}</span>件</div>
         </div>
         <div className="modal__body">
+          {/* カテゴリ未設定のPDFは送信先がカテゴリ由来で決まらない。
+              ファイル名の表記ゆれで人物が分かれているケースがここに出る。 */}
+          {uncategorizedCount > 0 && (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "flex-start",
+                padding: "8px 10px",
+                marginBottom: 12,
+                fontSize: 12,
+                lineHeight: 1.6,
+                color: "var(--text-2)",
+                background: "var(--amber-soft, rgba(245, 158, 11, 0.10))",
+                border: "1px solid var(--amber-border, rgba(245, 158, 11, 0.35))",
+                borderRadius: 5,
+              }}
+            >
+              <span aria-hidden>⚠️</span>
+              <span>
+                選択中のうち <span className="num">{uncategorizedCount}</span> 件はカテゴリ未設定です。
+                ファイル名の表記ゆれで人物が別扱いになっている可能性があります。
+                「要確認」で同一人物にまとめるか、カテゴリを設定してから送信してください。
+              </span>
+            </div>
+          )}
           <div className="field__label" style={{ marginBottom: 8 }}>
             送信先（複数選択可）
             <span style={{ marginLeft: 8, fontWeight: 400, color: "var(--text-3)" }}>
