@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase'
 import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { loadMatchIndex, resolvePersonForFile, type ResolveOutcome } from '@/lib/person-match'
+import { findDuplicate, loadDedupeIndex, registerUploaded, sha256 } from '@/lib/pdf-dedupe'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
 import JSZip from 'jszip'
@@ -93,7 +94,26 @@ export async function POST(request: NextRequest) {
   const matchIndex = await loadMatchIndex(tenantId)
   const matched: Record<ResolveOutcome, number> = { alias: 0, key: 0, created: 0 }
 
+  // 同じ PDF の二重登録を防ぐための索引。ファイル名では判定できない
+  // （年月がファイル名に入らないので 9月分と 10月分が同名になる）ため、
+  // 中身の SHA-256 で判定する。
+  const dedupeIndex = await loadDedupeIndex(tenantId)
+  let skippedDuplicates = 0
+
   for (const pdf of pdfs) {
+    // 重複判定はストレージへ上げる前に行う。後で弾くと実体だけが残ってゴミになる。
+    const contentHash = sha256(pdf.data)
+    const duplicate = await findDuplicate(dedupeIndex, {
+      name: pdf.name,
+      size: pdf.size,
+      hash: contentHash,
+    })
+    if (duplicate) {
+      skippedDuplicates++
+      console.log(`[uploads] 登録済みのためスキップ: ${pdf.name} (既存 ${duplicate.id})`)
+      continue
+    }
+
     const storagePath = `${batch.id}/${randomUUID()}.pdf`
 
     const { error: uploadErr } = await supabase.storage
@@ -127,16 +147,38 @@ export async function POST(request: NextRequest) {
         extractStatus: 'DONE',
         personName,
         personId: resolved.personId,
+        content_hash: contentHash,
       })
       .select('id')
       .single()
 
-    if (!docErr && doc) documentIds.push(doc.id)
+    if (!docErr && doc) {
+      documentIds.push(doc.id)
+      // 同じバッチ内に同一ファイルが 2 つある場合に 2 件目を弾けるようにする。
+      registerUploaded(dedupeIndex, {
+        id: doc.id,
+        originalFileName: pdf.name,
+        fileSizeBytes: pdf.size,
+        storageBucket: 'pdfs',
+        storagePath,
+        contentHash,
+      })
+    }
+  }
+
+  // 全件が重複だったときにバッチだけが残ると、履歴に空の行が溜まっていく。
+  // どの書類からも参照されていないので消してよい。
+  if (documentIds.length === 0) {
+    await supabase
+      .from('pdf_upload_batches')
+      .delete()
+      .eq('tenant_id', tenantId)
+      .eq('id', batch.id)
   }
 
   return Response.json(
     {
-      uploadBatchId: batch.id,
+      uploadBatchId: documentIds.length > 0 ? batch.id : null,
       acceptedFiles: documentIds.length,
       ignoredFiles: totalFiles - pdfs.length,
       documentIds,
@@ -144,6 +186,8 @@ export async function POST(request: NextRequest) {
       matchedByAlias: matched.alias,
       matchedByName: matched.key,
       newPersons: matched.created,
+      // 中身が既存の書類と同一だったため登録しなかった件数。
+      skippedDuplicates,
     },
     { status: 201 },
   )
