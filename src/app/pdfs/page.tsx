@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
+import {
+  formatUploadPeriod,
+  toUploadPeriod,
+  uploadPeriodOptions,
+} from "@/lib/upload-period";
 
 type PdfDocument = {
   id: string;
@@ -9,6 +14,8 @@ type PdfDocument = {
   personName: string | null;
   personId: string | null;
   uploadedAt: string;
+  /** 「〇月アップ分」タグ（YYYY-MM）。分類はこれが正。 */
+  upload_period: string | null;
 };
 
 type Person = {
@@ -63,8 +70,14 @@ async function readAllEntries(entry: FileSystemEntry, result: File[]): Promise<v
   }
 }
 
-function toYear(d: string) { return new Date(d).getFullYear().toString(); }
-function toMonth(d: string) { return String(new Date(d).getMonth() + 1).padStart(2, "0"); }
+// 分類は「〇月アップ分」タグ（upload_period）で行う。実際のアップロード日時では分類しない
+// ―― 過去分の差し替えを後から上げることがあり、実日付だとひと月ずれるため。
+// タグ未設定の古い行だけ、実アップロード日（JST）から補って表示する。
+function periodOf(p: PdfDocument): string {
+  return p.upload_period ?? toUploadPeriod(new Date(p.uploadedAt));
+}
+function toYear(p: PdfDocument) { return periodOf(p).slice(0, 4); }
+function toMonth(p: PdfDocument) { return periodOf(p).slice(5, 7); }
 
 export default function PdfsPage() {
   const [allPdfs, setAllPdfs] = useState<PdfDocument[]>([]);
@@ -89,6 +102,12 @@ export default function PdfsPage() {
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [showTokenModal, setShowTokenModal] = useState(false);
   const [resolving, setResolving] = useState(false);
+  // アップロードは「〇月アップ分」を確定してから実行する。既定は今月（JST）だが、
+  // 過去分の差し替えを上げることがあるので必ず人に確認させる。
+  const [pendingUpload, setPendingUpload] = useState<{ files: File[]; folderName?: string } | null>(null);
+  const [pendingPeriod, setPendingPeriod] = useState<string>(() => toUploadPeriod());
+  const [retagOpen, setRetagOpen] = useState(false);
+  const [retagging, setRetagging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchData = useCallback(async () => {
@@ -129,20 +148,26 @@ export default function PdfsPage() {
     return m;
   }, [persons]);
 
+  // データ上に存在する期間。選択肢の範囲外でも選べるようにする。
+  const existingPeriods = useMemo(
+    () => Array.from(new Set(allPdfs.map((p) => periodOf(p)))).sort().reverse(),
+    [allPdfs],
+  );
+
   const years = useMemo(() => {
     const s = new Set<string>();
-    allPdfs.forEach((p) => s.add(toYear(p.uploadedAt)));
+    allPdfs.forEach((p) => s.add(toYear(p)));
     return Array.from(s).sort().reverse();
   }, [allPdfs]);
 
   const yearPdfs = useMemo(() => {
     if (selectedYear === "all") return allPdfs;
-    return allPdfs.filter((p) => toYear(p.uploadedAt) === selectedYear);
+    return allPdfs.filter((p) => toYear(p) === selectedYear);
   }, [allPdfs, selectedYear]);
 
   const months = useMemo(() => {
     const s = new Set<string>();
-    yearPdfs.forEach((p) => s.add(toMonth(p.uploadedAt)));
+    yearPdfs.forEach((p) => s.add(toMonth(p)));
     return Array.from(s).sort().reverse();
   }, [yearPdfs]);
 
@@ -181,7 +206,7 @@ export default function PdfsPage() {
     () =>
       selectedMonth === "all"
         ? yearPdfs
-        : yearPdfs.filter((p) => toMonth(p.uploadedAt) === selectedMonth),
+        : yearPdfs.filter((p) => toMonth(p) === selectedMonth),
     [yearPdfs, selectedMonth],
   );
 
@@ -248,12 +273,13 @@ export default function PdfsPage() {
     setSelected(new Set());
   };
 
-  const uploadFiles = useCallback(async (files: File[], folderName?: string) => {
+  const uploadFiles = useCallback(async (files: File[], folderName: string | undefined, period: string) => {
     if (files.length === 0) return;
     setUploading(true);
     const formData = new FormData();
     for (const file of files) formData.append("files", file);
     formData.append("sourceFolderName", folderName || "ブラウザアップロード");
+    formData.append("uploadPeriod", period);
     try {
       const res = await fetch("/api/v1/uploads/folder", { method: "POST", body: formData });
       if (res.ok) {
@@ -263,7 +289,7 @@ export default function PdfsPage() {
         alert(
           [
             r.acceptedFiles > 0
-              ? `${r.acceptedFiles}件のPDFを登録しました`
+              ? `${formatUploadPeriod(r.uploadPeriod ?? period)}アップ分として${r.acceptedFiles}件のPDFを登録しました`
               : "新しく登録したPDFはありません",
             skipped > 0
               ? `${skipped}件は中身が既存のPDFと同一のためスキップしました`
@@ -284,10 +310,17 @@ export default function PdfsPage() {
     setUploading(false);
   }, [fetchData]);
 
+  // ファイルを受け取ったら即アップロードせず、「〇月アップ分」を確定させてから実行する。
+  const requestUpload = (files: File[], folderName?: string) => {
+    if (files.length === 0) return;
+    setPendingPeriod(toUploadPeriod());
+    setPendingUpload({ files, folderName });
+  };
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-    uploadFiles(Array.from(files));
+    requestUpload(Array.from(files));
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -298,8 +331,8 @@ export default function PdfsPage() {
     const allFiles: File[] = [];
     const entries = Array.from(items).map((i) => i.webkitGetAsEntry?.()).filter(Boolean) as FileSystemEntry[];
     for (const entry of entries) await readAllEntries(entry, allFiles);
-    if (allFiles.length === 0) { uploadFiles(Array.from(e.dataTransfer.files)); return; }
-    uploadFiles(allFiles, entries.find((e) => e.isDirectory)?.name);
+    if (allFiles.length === 0) { requestUpload(Array.from(e.dataTransfer.files)); return; }
+    requestUpload(allFiles, entries.find((e) => e.isDirectory)?.name);
   };
 
   const handleBulkDelete = async (ids: string[], label: string) => {
@@ -391,6 +424,31 @@ export default function PdfsPage() {
     }
   };
 
+  // 「〇月アップ分」の付け替え。選び間違いや、過去分をそのまま上げてしまった場合に使う。
+  const retagSelected = async (period: string) => {
+    setRetagging(true);
+    try {
+      const res = await fetch("/api/v1/pdfs/period", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected), uploadPeriod: period }),
+      });
+      if (!res.ok) {
+        alert(`エラー: ${(await res.json()).error ?? "不明"}`);
+        return;
+      }
+      const r = await res.json();
+      setRetagOpen(false);
+      setSelected(new Set());
+      await fetchData();
+      alert(`${r.updated}件を${formatUploadPeriod(period)}アップ分に変更しました`);
+    } catch (e) {
+      alert(`通信エラー: ${e instanceof Error ? e.message : "不明"}`);
+    } finally {
+      setRetagging(false);
+    }
+  };
+
   const toggleSelect = (id: string) => {
     setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
@@ -425,6 +483,10 @@ export default function PdfsPage() {
         </label>
         <p style={{ fontSize: 12, marginTop: 8, color: "var(--text-2)" }}>
           PDF / ZIP を選択、またはフォルダをドラッグ&ドロップ
+          <br />
+          <span style={{ color: "var(--text-3)" }}>
+            登録前に「〇月アップ分」を確認します（既定: {formatUploadPeriod(toUploadPeriod())}）
+          </span>
         </p>
       </div>
 
@@ -443,7 +505,7 @@ export default function PdfsPage() {
             {years.map((y) => (
               <button key={y} onClick={() => setSelectedYear(y)} className={`chip ${selectedYear === y ? "is-active" : ""}`}>
                 <span className="num">{y}</span>
-                <span className="chip__count num">{allPdfs.filter((p) => toYear(p.uploadedAt) === y).length}</span>
+                <span className="chip__count num">{allPdfs.filter((p) => toYear(p) === y).length}</span>
               </button>
             ))}
           </div>
@@ -451,14 +513,16 @@ export default function PdfsPage() {
           {/* 月タブ */}
           {selectedYear !== "all" && selectedYear !== "" && (
             <div className="toolbar" style={{ marginBottom: 6 }}>
-              <span className="toolbar__label">月</span>
+              <span className="toolbar__label" title="アップロードした実日時ではなく、登録時に選んだタグで分類しています">
+                アップ分
+              </span>
               <button onClick={() => setSelectedMonth("all")} className={`chip ${selectedMonth === "all" ? "is-active" : ""}`}>
                 すべて <span className="chip__count num">{yearPdfs.length}</span>
               </button>
               {months.map((m) => (
                 <button key={m} onClick={() => setSelectedMonth(m)} className={`chip ${selectedMonth === m ? "is-active" : ""}`}>
                   <span className="num">{parseInt(m)}</span>月
-                  <span className="chip__count num">{yearPdfs.filter((p) => toMonth(p.uploadedAt) === m).length}</span>
+                  <span className="chip__count num">{yearPdfs.filter((p) => toMonth(p) === m).length}</span>
                 </button>
               ))}
             </div>
@@ -537,6 +601,9 @@ export default function PdfsPage() {
               <div style={{ display: "flex", gap: 6 }}>
                 <button onClick={() => setShowSendModal(true)} className="btn btn--primary">
                   LINE送信 ({selected.size})
+                </button>
+                <button onClick={() => setRetagOpen(true)} className="btn">
+                  アップ分を変更
                 </button>
                 <button onClick={() => handleBulkDelete(Array.from(selected), `選択した${selected.size}件`)} disabled={deleting} className="btn btn--danger">
                   {deleting ? "削除中…" : "削除"}
@@ -692,6 +759,53 @@ export default function PdfsPage() {
         </div>
       )}
 
+      {/* アップ分の確認（アップロード前） */}
+      {pendingUpload && (
+        <PeriodModal
+          title="アップ分の確認"
+          confirmLabel={uploading ? "登録中…" : `${pendingUpload.files.length}件を登録`}
+          busy={uploading}
+          value={pendingPeriod}
+          options={uploadPeriodOptions(toUploadPeriod(), existingPeriods)}
+          onChange={setPendingPeriod}
+          onClose={() => setPendingUpload(null)}
+          onConfirm={async () => {
+            const target = pendingUpload;
+            setPendingUpload(null);
+            await uploadFiles(target.files, target.folderName, pendingPeriod);
+          }}
+        >
+          <>
+            選択した <span className="num">{pendingUpload.files.length}</span> 件を
+            <strong>「{formatUploadPeriod(pendingPeriod)}アップ分」</strong>として登録します。
+            <br />
+            過去分の差し替えを登録する場合は、その月に変更してください。
+            実際のアップロード日時ではなく、ここで選んだタグで分類されます。
+          </>
+        </PeriodModal>
+      )}
+
+      {/* アップ分の付け替え（登録済みPDF） */}
+      {retagOpen && (
+        <PeriodModal
+          title="アップ分を変更"
+          confirmLabel={retagging ? "変更中…" : `${selected.size}件を変更`}
+          busy={retagging}
+          value={pendingPeriod}
+          options={uploadPeriodOptions(toUploadPeriod(), existingPeriods)}
+          onChange={setPendingPeriod}
+          onClose={() => setRetagOpen(false)}
+          onConfirm={() => retagSelected(pendingPeriod)}
+        >
+          <>
+            選択中の <span className="num">{selected.size}</span> 件を
+            <strong>「{formatUploadPeriod(pendingPeriod)}アップ分」</strong>に変更します。
+            <br />
+            PDF の中身や配信履歴には影響しません。分類（年／アップ分タブ）だけが変わります。
+          </>
+        </PeriodModal>
+      )}
+
       {/* 要確認（同一人物の候補）モーダル */}
       {showMatchModal && (
         <MatchModal
@@ -726,6 +840,67 @@ export default function PdfsPage() {
           )}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * 「〇月アップ分」タグを選ぶ共通モーダル。
+ * 登録前の確認と、登録済みPDFの付け替えの両方で使う。
+ */
+function PeriodModal({
+  title,
+  confirmLabel,
+  busy,
+  value,
+  options,
+  onChange,
+  onClose,
+  onConfirm,
+  children,
+}: {
+  title: string;
+  confirmLabel: string;
+  busy: boolean;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+  onClose: () => void;
+  onConfirm: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="modal__backdrop" onClick={busy ? undefined : onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal__head">
+          <div className="modal__title">{title}</div>
+        </div>
+        <div className="modal__body">
+          <p style={{ fontSize: 12, color: "var(--text-2)", marginTop: 0, lineHeight: 1.7 }}>
+            {children}
+          </p>
+          <div className="field__label">アップ分</div>
+          <select
+            className="input"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            disabled={busy}
+            style={{ width: "100%" }}
+          >
+            {options.map((o) => (
+              <option key={o} value={o}>
+                {formatUploadPeriod(o)}アップ分
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="modal__foot">
+          <button onClick={onClose} className="btn" disabled={busy}>キャンセル</button>
+          <button onClick={onConfirm} className="btn btn--primary" disabled={busy}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

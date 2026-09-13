@@ -51,6 +51,12 @@ npm run lint
 - **LINE Messaging API のチャンネルアクセストークン**: Doppler `line-pdf-delivery` に格納。サーバー側専用
 - **PDF テキスト抽出**: ファイルサイズ大の場合タイムアウトに注意（Vercel Functions の 60s 上限）
 - **`/dl/` パス**: 公開ダウンロードリンク。署名 or トークンでアクセス制御している前提を崩さない
+- **「〇月アップ分」タグ（`pdf_documents.upload_period`）**: PDF 管理画面の年／アップ分タブは
+  このタグで分類する。**実際のアップロード日時（`uploadedAt`）では分類しない** ―― 過去分の
+  差し替えを後から上げることがあり、実日付だとひと月ずれる（実際にバッチ「社員2026.6」は
+  7月にアップされ、旧実装では 7月タブに入っていた）。実日付は登録時の既定値を出すためだけに使い、
+  人が選んだタグが正。あとから `PATCH /api/v1/pdfs/period` で付け替えできる。
+  形式は `YYYY-MM`（DB 側にも CHECK 制約）。ヘルパは `src/lib/upload-period.ts`
 - **PDF の二重登録**: アップロードはバッチごとに新パスへ insert するため、同じファイルを
   上げ直すと上書きではなく行が増える（＝一括送信で同じ人に 2 通届く）。取り込み時に
   中身の SHA-256（`pdf_documents.content_hash`）で判定してスキップする（`src/lib/pdf-dedupe.ts`）。

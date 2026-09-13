@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase'
 import { resolveTenantId, unauthenticatedTenant } from '@/lib/tenant'
 import { loadMatchIndex, resolvePersonForFile, type ResolveOutcome } from '@/lib/person-match'
 import { findDuplicate, loadDedupeIndex, registerUploaded, sha256 } from '@/lib/pdf-dedupe'
+import { isValidUploadPeriod, toUploadPeriod } from '@/lib/upload-period'
 import { NextRequest } from 'next/server'
 import { randomUUID } from 'crypto'
 import JSZip from 'jszip'
@@ -65,6 +66,17 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData()
   const files = formData.getAll('files') as File[]
   const sourceFolderName = formData.get('sourceFolderName') as string | null
+
+  // 「〇月アップ分」タグ。画面が選んだ値を正とし、未指定のときだけ実行時刻（JST）から補う。
+  // 過去分の差し替えアップロードがあるので、実アップロード日時では分類しない。
+  const requestedPeriod = formData.get('uploadPeriod')
+  if (requestedPeriod !== null && !isValidUploadPeriod(requestedPeriod)) {
+    return Response.json(
+      { error: 'uploadPeriod は YYYY-MM 形式で指定してください' },
+      { status: 400 },
+    )
+  }
+  const uploadPeriod = isValidUploadPeriod(requestedPeriod) ? requestedPeriod : toUploadPeriod()
 
   const { pdfs, totalFiles } = await extractPdfsFromFiles(files)
 
@@ -148,6 +160,7 @@ export async function POST(request: NextRequest) {
         personName,
         personId: resolved.personId,
         content_hash: contentHash,
+        upload_period: uploadPeriod,
       })
       .select('id')
       .single()
@@ -188,6 +201,7 @@ export async function POST(request: NextRequest) {
       newPersons: matched.created,
       // 中身が既存の書類と同一だったため登録しなかった件数。
       skippedDuplicates,
+      uploadPeriod,
     },
     { status: 201 },
   )
